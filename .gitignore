@@ -1,0 +1,7 @@
+# data
+*.json
+*.jsonl
+*.csv
+*.parquet
+*.lock
+*.arrow

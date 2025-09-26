@@ -45,7 +45,7 @@ def _build_jsonl_data_files(jsonl_dir: Path, split=None, file_glob=None) -> List
 
 
 def load_and_prepare_dataset(
-    load_dir: Path | str,
+    load_dir,
     load_type:str,
     logger,
     split=None,
@@ -72,7 +72,10 @@ def load_and_prepare_dataset(
     
     return ds
 
-def prepare_examples(ds,start_idx,max_rows,logger):
+def prepare_examples(ds,logger,start_idx=0,max_rows=None,extract_code=False):
+    '''
+    从 各种可能的字段中获取code，并且存在code字段中
+    '''
     total = len(ds)
     if start_idx >= total:
         logger.warning(f"start_problem_idx ({start_idx}) >= dataset size ({total}); nothing to do.")
@@ -92,12 +95,13 @@ def prepare_examples(ds,start_idx,max_rows,logger):
         rows = ds.select(range(begin, end)).to_list()
 
         for r in rows:
-            code = _extract_code_from_row(r)
-            if not code:
-                # 没拿到代码就跳过
-                continue
             ex = dict(r)
-            ex["code"] = code  # 统一字段名，供 pre_fun 使用
+            if extract_code:
+                code = _extract_code_from_row(r)
+                if not code:
+                    # 没拿到代码就跳过
+                    continue
+                ex["code"] = code  # 统一字段名，供 pre_fun 使用
             examples.append(ex)
 
         taken += len(rows)
@@ -110,7 +114,7 @@ def prepare_examples(ds,start_idx,max_rows,logger):
 
 
 
-def save_output_jsonl(output_problems: List[Dict[str, Any]], save_dir_path: Path, logger, save_name=None):
+def save_output_jsonl(output_problems: List[Dict[str, Any]], save_dir_path: Path, logger, save_name=None,meta_name=None):
     def _to_jsonable(o):
         if isinstance(o, (str, int, float, bool)) or o is None:
             return o
@@ -125,8 +129,11 @@ def save_output_jsonl(output_problems: List[Dict[str, Any]], save_dir_path: Path
         out_jsonl = save_dir_path / save_name
     else:
         out_jsonl = save_dir_path / f"output_problems.jsonl"
-        
-    out_meta = save_dir_path / f"meta.json"
+
+    if meta_name:
+        out_meta = save_dir_path / meta_name
+    else:
+        out_meta = save_dir_path / f"meta.json"
 
     # Write output jsonl
     with out_jsonl.open("w", encoding="utf-8") as wf:

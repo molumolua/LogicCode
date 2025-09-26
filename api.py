@@ -17,7 +17,7 @@ MODEL="gpt-5"
 client = OpenAI(base_url=BASE_URL,api_key=API_KEY)
 def get_oai_completion(prompt,model,temperature,think=False,stream=False):
     try:
-        print(prompt)
+        # print(prompt)
         response = client.chat.completions.create(
             model=model,
             temperature=temperature,
@@ -211,7 +211,7 @@ if __name__ == "__main__":
             post_fun=post_fun,
             logger=None,
             n_processes=1,
-            temperature=0.6,
+            temperature=1,
             timeout=20,
             max_try=3,
             think=False

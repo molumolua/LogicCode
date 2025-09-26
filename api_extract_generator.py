@@ -9,36 +9,20 @@ from typing import Any, Dict, List, Optional
 
 
 from api import batch_get_chat_api
-from prompt import upgrade_prompt
+from prompt import extract_generator_prompt
 from logger import setup_logger
 from process_dataset import load_and_prepare_dataset,save_output_jsonl,prepare_examples
-from extract import extract_last_code_block
+from extract import split_with_input_section
+from after_extract import verify_and_extract_generator
+import copy
 # ---------- helpers ----------
 
 def pre_fun(example):
-    # 这里的 example 已经由 prepare_examples() 保证带 "code"
-    return upgrade_prompt.format(code=example["code"])
+    return extract_generator_prompt.format(case_code=example['generator'],default_scale=example['extract_number']['default_scale'])
 
 
 def post_fun(example, reply):
     example["answer"] = reply
-
-
-def verify_problems(examples):
-    if not isinstance(examples, list):
-        examples = list(examples)
-    fail_examples=[]
-    success_examples=[]
-    for example in examples:
-        code,code_type = extract_last_code_block(example['answer'])
-        if code:
-            example['upgrade_code']=code
-            example['code_type']=code_type
-            success_examples.append(example)
-        else:
-            fail_examples.append(example)
-    return success_examples, fail_examples
-
 
 
 
@@ -47,9 +31,9 @@ def verify_problems(examples):
 def main():
     parser = argparse.ArgumentParser(description="Batch prompting on local Parquet (CodeContests-like)")
     # 数据与加载
-    parser.add_argument("--load_type",type=str,default="parquet",help="jsonl or parquet")
+    parser.add_argument("--load_type",type=str,default="json",help="json or parquet")
     parser.add_argument("--load_dir", type=str,
-                        default="/inspire/hdd/global_user/xucaijun-253108120121/Dataset/hf_datasets/code_contest",
+                        default="../Dataset",
                         help="Directory containing local parquet shards")
     parser.add_argument("--split", type=str, default="train", choices=["train", "test", "valid", "validation"],
                         help="Which split to load (matched by filename prefix e.g., train-*.parquet)")
@@ -61,16 +45,17 @@ def main():
                         help="Start index in the merged dataset")
     parser.add_argument("--max_rows", type=int, default=None,
                         help="Limit number of rows to load after start_problem_idx (None = all)")
-    parser.add_argument("--save_dir", type=str, default="/inspire/hdd/global_user/xucaijun-253108120121/Dataset/hf_datasets/code_contest_upgrade_1")
+    parser.add_argument("--save_dir", type=str, default="./save")
     # 推理与并行
-    parser.add_argument("--model", type=str, default="qwen3-235b", help="Model name for batch_get_chat_api")
-    parser.add_argument("--n_processes", type=int, default=8, help="Parallel processes for API calls")
-    parser.add_argument("--temperature", type=float, default=0.6, help="Sampling temperature")
+    parser.add_argument("--model", type=str, default="gpt-5", help="Model name for batch_get_chat_api")
+    parser.add_argument("--n_processes", type=int, default=16, help="Parallel processes for API calls")
+    parser.add_argument("--temperature", type=float, default=1, help="Sampling temperature")
     parser.add_argument("--timeout", type=int, default=20, help="Per-request timeout (seconds)")
     parser.add_argument("--think", action="store_true", default=False, help="Enable think mode for API (if supported)")
+    parser.add_argument("--extract_code", action="store_true", default=False, help="Whether to extract code from dataset")
 
     # 批次与重试
-    parser.add_argument("--batch_size", type=int, default=8, help="Batch size per attempt")
+    parser.add_argument("--batch_size", type=int, default=256, help="Batch size per attempt")
     parser.add_argument("--max_attempts", type=int, default=3, help="Outer retry attempts over remaining problems")
     parser.add_argument("--inner_max_try", type=int, default=3, help="Inner retry count passed to batch_get_chat_api")
 
@@ -96,13 +81,14 @@ def main():
         ds=dataset,
         start_idx=args.start_problem_idx,
         max_rows=args.max_rows,
-        logger=logger)
+        logger=logger,
+        extract_code=args.extract_code)
     
     if not examples:
         logger.info("No examples with usable code. Exit.")
         return
 
-    output_problems: List[Dict[str, Any]] = []
+    output_code:List[Dict[str, Any]] = []
     left_problems = examples[:]       # list
     next_attempt_problems: List[Dict[str, Any]] = []
 
@@ -122,6 +108,9 @@ def main():
 
             logger.info(f"  Batch {b+1}/{total_batches} | size={len(batch_problems)}")
 
+            # print(batch_problems[0]['generator'])
+            # print(batch_problems[0]['extract_number'])
+
             batch_get_chat_api(
                 examples=batch_problems,
                 eng=args.model,
@@ -134,35 +123,33 @@ def main():
                 max_try=args.inner_max_try,
                 think=args.think,
             )
+            # print(batch_problems[0]['answer'])
+            
+            _, todo_problems,code_list =   verify_and_extract_generator(batch_problems,logger)
 
-            success_problems, todo_problems = verify_problems(batch_problems)
-            if not isinstance(success_problems, list):
-                success_problems = list(success_problems)
-            if not isinstance(todo_problems, list):
-                todo_problems = list(todo_problems)
 
-            success_processed_problems= [{ "code":problem['upgrade_code'],
-                                           "code_type":problem['code_type'],
-                                           "source_code":problem['code'],
-                                           "source_name":problem['name'],
-                                           "source_description":problem['description'],
-                                           "upgrade_reply":problem['answer']} for problem in success_problems]
-            output_problems.extend(success_processed_problems)
+
+            print(code_list[0]["extract_generator"]['generator_code'].format(**code_list[0]["extract_number"]["default_scale"]))
+
+
+
+            
+            output_code.extend(code_list)
+
+
             next_attempt_problems.extend(todo_problems)
             
-            # 保存
-            save_output_jsonl(output_problems, save_dir_path=save_dir_path,  logger=logger)
 
-            logger.info(f"    success={len(success_problems)} | retry_next={len(todo_problems)}")
+            save_output_jsonl(output_code, save_dir_path=save_dir_path,  logger=logger, save_name="extracted_code.jsonl",meta_name="extracted_code_meta.json")
+
+            logger.info(f"    success=? | retry_next={len(todo_problems)}")
 
         left_problems = next_attempt_problems
         next_attempt_problems = []
-        logger.info(f"End of Attempt {attempt}: accumulated={len(output_problems)} | remaining={len(left_problems)}")
+        logger.info(f"End of Attempt {attempt}: accumulated={len(output_code)} | remaining={len(left_problems)}")
 
-    logger.info(f"Done. total_completed={len(output_problems)} | total_input={len(examples)}")
+    logger.info(f"Done. total_completed={len(output_code)} | total_input={len(examples)}")
 
-    # # 保存
-    # save_output_jsonl(output_problems, save_dir_path=save_dir_path,logger=logger)
 
 
 if __name__ == "__main__":

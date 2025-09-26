@@ -89,6 +89,53 @@ def extract_last_code_block(answer: str) -> Tuple[Optional[str], Optional[str]]:
     return None, None
 
 
+# 定义下一节的边界标题（大小写不敏感、允许可选的 "Format"）
+SECTION_BOUNDARY = re.compile(
+    r"(?im)^\s*(output(?:\s*format)?|examples?|sample(?:\s+input|\s+tests?)?|notes?|constraints?)\s*:?\s*$"
+)
+
+def split_with_input_section(text: str) -> Tuple[Optional[str], Optional[str], Optional[str]]:
+    """
+    将题面分割为：
+      - before_text: Input 之前的内容
+      - input_text:  Input 小节（从 Input 标题行之后到下一个小节标题之前）
+      - after_text:  下一个小节标题开始直到文末
+    若没有找到 Input，小节：返回 (text, None, None)
+    """
+    if not isinstance(text, str):
+        return None, None, None
+
+    # 1) 找 Input / Input Format 标题行（大小写不敏感，允许冒号）
+    m_start = re.search(r"(?im)^\s*input(?:\s*format)?\s*:?\s*$", text)
+    if not m_start:
+        # 未找到 Input，全部作为 before 返回
+        return text, None, None
+
+    # 计算三段的边界
+    before_text = text[:m_start.start()]
+    input_body_start = m_start.end()
+
+    # 2) 从 Input 后往下找下一章节标题（Output / Examples / Sample / Notes / Constraints）
+    m_end = SECTION_BOUNDARY.search(text, pos=input_body_start)
+    if m_end:
+        input_body_end = m_end.start()
+        after_text = text[m_end.start():]
+    else:
+        input_body_end = len(text)
+        after_text = ""
+
+    # 3) 提取并做轻微清理：去掉 Input 内容开头的多余空行、末尾空白
+    input_text_raw = text[input_body_start:input_body_end]
+    input_text = re.sub(r"^\s*\n", "", input_text_raw)  # 去掉最前面的连串空行
+    input_text = input_text.rstrip()
+
+    # 4) 统一去掉 before 的末尾多余空白（不破坏中间结构）
+    before_text = before_text.rstrip("\n")
+
+    # 5) 若 after 存在，保留原貌；如果是空字符串则返回 ""（而不是 None）
+    return before_text, input_text if input_text else "", after_text
+
+
 # if __name__ == "__main__":
 #     logger=setup_logger()
 #     dataset = load_and_prepare_dataset("/inspire/hdd/global_user/xucaijun-253108120121/Dataset/hf_datasets/code_contest_upgrade_1",file_glob="output_problems.jsonl",logger=logger,load_type="json")
