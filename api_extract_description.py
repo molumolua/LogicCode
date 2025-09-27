@@ -25,15 +25,6 @@ def pre_fun(example):
 def post_fun(example, reply):
     example["answer"] = reply
     
-def assemble_description(before_input, input_section, after_input):
-    parts = []
-    if before_input:
-        parts.append(before_input.strip())
-    if input_section:
-        parts.append("Input:\n" + input_section.strip())
-    if after_input:
-        parts.append(after_input.strip())
-    return "\n\n".join(parts)
 
 
 
@@ -150,39 +141,15 @@ def main():
             )
 
 
-            success_problems, todo_problems,code_list = verify_default_problem_and_extract_large_small_problems(extract_input_problems,logger)
+            _, todo_problems,code_list = verify_default_problem_and_extract_large_small_problems(extract_input_problems,logger)
 
-            for problem in success_problems:
-                before_input = problem.get('description_before_input','')
-                input_section = problem.get('description','')
-                after_input = problem.get('description_after_input','')
-
-                problem['description_input_section'] = input_section
-                problem['description']=assemble_description(before_input, input_section, after_input)
-
-            if not isinstance(success_problems, list):
-                success_problems = list(success_problems)
-            if not isinstance(todo_problems, list):
-                todo_problems = list(todo_problems)
-
-            success_processed_problems = [
-                {
-                    **problem 
-                }for problem in success_problems
-            ]
-            
             output_code.extend(code_list)
 
-
-            output_problems.extend(success_processed_problems)
             next_attempt_problems.extend(todo_problems)
-            
-            # 保存
-            save_output_jsonl(output_problems, save_dir_path=save_dir_path,  logger=logger)
 
             save_output_jsonl(output_code, save_dir_path=save_dir_path,  logger=logger, save_name="extracted_code.jsonl",meta_name="extracted_code_meta.json")
 
-            logger.info(f"    success={len(success_problems)} | retry_next={len(todo_problems)}")
+            logger.info(f"    success={len(code_list)} | retry_next={len(todo_problems)}")
 
         left_problems = next_attempt_problems
         next_attempt_problems = []

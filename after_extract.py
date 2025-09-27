@@ -1,8 +1,19 @@
 from process_dataset import load_and_prepare_dataset,prepare_examples
-from extract import extract_last_code_block
+from extract import extract_last_code_block,parse_gen_script
 from logger import setup_logger
 import copy
 from typing import Tuple, Optional, List, Dict, Any
+
+def assemble_description(before_input, input_section, after_input):
+    parts = []
+    if before_input:
+        parts.append(before_input.strip())
+    if input_section:
+        parts.append("Input:\n" + input_section.strip())
+    if after_input:
+        parts.append(after_input.strip())
+    return "\n\n".join(parts)
+
 
 def exec_and_return_values(code_str: str, var_names: List[str], logger) -> Optional[Dict[str, Any]]:
     """
@@ -99,7 +110,6 @@ def build_problems_from_string(
     
 
 def verify_default_problem_and_extract_large_small_problems(default_problems,logger):
-    success_problems=[]
     left_problems=[]
     code_list=[]
     for example in default_problems:
@@ -122,18 +132,18 @@ def verify_default_problem_and_extract_large_small_problems(default_problems,log
                 })
 
                 success_flag = True
-                default_example = copy.deepcopy(example)
-                default_example['description']=default_problem
-                success_problems.append(default_example)
-                for problem in small_problems:
-                    small_example = copy.deepcopy(example)
-                    small_example['description']=problem
-                    success_problems.append(small_example)
+                # default_example = copy.deepcopy(example)
+                # default_example['description']=default_problem
+                # success_problems.append(default_example)
+                # for problem in small_problems:
+                #     small_example = copy.deepcopy(example)
+                #     small_example['description']=problem
+                #     success_problems.append(small_example)
 
-                for problem in large_problems:
-                    large_example = copy.deepcopy(example)
-                    large_example['description']=problem
-                    success_problems.append(large_example)
+                # for problem in large_problems:
+                #     large_example = copy.deepcopy(example)
+                #     large_example['description']=problem
+                #     success_problems.append(large_example)
 
                 
 
@@ -141,7 +151,7 @@ def verify_default_problem_and_extract_large_small_problems(default_problems,log
             left_problems.append(example)
         
     
-    return success_problems,left_problems, code_list
+    return None,left_problems, code_list
 
 def verify_and_extract_generator(code_list,logger):
     _logger = logger
@@ -206,6 +216,31 @@ def verify_and_extract_validator(code_list,logger):
 
     return None,left_problems,return_code_list
 
+def verify_and_extract_generator_cmd(code_list,logger):
+    _logger = logger
+    success_problems=[]
+    left_problems = []
+    return_code_list = []
+    for example in code_list:
+        code,lang = extract_last_code_block(example['answer'])
+        if lang and lang =="bash":
+            # print("ok! verify!")
+            # print(code)
+            group_gen_cmd = parse_gen_script(code)
+            return_code_list.append({
+                "extract_generator_cmd":
+                {
+                    "code":code,
+                    "lang":lang,
+                    "group_gen_cmd":group_gen_cmd
+                },
+                **example
+            })
+        else:
+            _logger.error("No Bash code.")
+            left_problems.append(example)
+
+    return None,left_problems,return_code_list
 
 if __name__ == "__main__":
     logger = setup_logger()

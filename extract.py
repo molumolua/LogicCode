@@ -136,6 +136,43 @@ def split_with_input_section(text: str) -> Tuple[Optional[str], Optional[str], O
     return before_text, input_text if input_text else "", after_text
 
 
+def parse_gen_script(text: str) -> List[Dict[str, Any]]:
+    """
+    解析包含多组 '# ----- Group k: ... -----' 标题与 './gen ...' 命令的脚本文本。
+    返回列表，每个元素是一个字典：
+        {
+          "note": str,            # 原始备注
+          "commands": List[str],  # 本组所有 ./gen 命令（按出现顺序）
+        }
+    """
+    lines = text.splitlines()
+    groups: List[Dict[str, Any]] = []
+    current = {
+                "note":"first_line",
+                "commands":[]
+    }
+
+
+    for line in lines:
+        s = line.strip()
+        if  s  and s.startswith("#"):
+            if len(current["commands"])>0:
+                groups.append(current)
+
+            current = {
+                "note":s,
+                "commands":[]
+            }
+        elif s and s.startswith("./gen "): 
+            current["commands"].append(s)
+
+    # 文件结束后把最后一组加入
+    if current:
+        groups.append(current)
+
+    return groups
+
+
 # if __name__ == "__main__":
 #     logger=setup_logger()
 #     dataset = load_and_prepare_dataset("/inspire/hdd/global_user/xucaijun-253108120121/Dataset/hf_datasets/code_contest_upgrade_1",file_glob="output_problems.jsonl",logger=logger,load_type="json")

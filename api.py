@@ -10,7 +10,7 @@ from tqdm import tqdm
 from logger import setup_logger
 # BASE_URL="http://qwen3-235b-128k.api.sii.edu.cn/v1"
 BASE_URL="https://api.openai.com/v1"
-API_KEY=""
+API_KEY=None
 MODEL="gpt-5"
 
 

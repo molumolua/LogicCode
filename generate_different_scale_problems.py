@@ -12,29 +12,56 @@ from api import batch_get_chat_api
 from prompt import generator_cmd_prompt
 from logger import setup_logger
 from process_dataset import load_and_prepare_dataset,save_output_jsonl,prepare_examples
-from extract import extract_last_code_block,split_with_input_section
-from after_extract import verify_and_extract_generator_cmd
+from after_extract import assemble_description
 import copy
 
-def pre_fun(example):
-    # 这里的 example 已经由 prepare_examples() 保证带 "code"
-    small_scale_decrease = example['extract_number']['small_scales']
-    large_scale_increase = example['extract_number']['large_scales']
-    default_scale=example['extract_number']['default_scale']
+def process_code_example_to_different_scale_problems(code_example):
+    before_input=code_example['description_before_input']
+    after_input=code_example['description_after_input']
+    input_template = code_example['extract_number']['template']
 
+    small_scale_decrease = code_example['extract_number']['small_scales']
+    large_scale_increase = code_example['extract_number']['large_scales']
+    default_scale=code_example['extract_number']['default_scale']
     scale_list = list(reversed(small_scale_decrease)) + [default_scale] +large_scale_increase
 
-    case_code = example['extract_generator']['generator_code'].format(**scale_list[-1])
+    generator_template = code_example["extract_generator"]["generator_code"]
 
-    prompt = generator_cmd_prompt.format(case_code=case_code,default_scale=default_scale,scale_list=scale_list)
+    validator_tempalte = code_example["extract_validator"]["validator_code"]
 
-    # print(prompt)
-    return prompt
+    group_gen_cmd = code_example["extract_generator_cmd"]["group_gen_cmd"]
 
 
-def post_fun(example, reply):
-    example["answer"] = reply
+    assert len(scale_list) == len(group_gen_cmd)
 
+    problems = []
+    accumlate_gen_cmd = []
+    accumlate_flag = True
+    for idx,(scale,gen_cmd) in enumerate(zip(scale_list,group_gen_cmd)):
+        if accumlate_flag:
+            accumlate_gen_cmd.extend(gen_cmd)
+        if scale == default_scale:
+            accumlate_flag = False
+            
+        problem = {
+            "source":code_example['source'],
+            "id":code_example["id"]+"_{idx}".format(idx=idx),
+            "title":code_example["title"],
+            "description":assemble_description(before_input=before_input, input_section=input_template.format(**scale), after_input=after_input),
+            "time_limit":code_example["time_limit"],
+            "memory_limit":code_example["memory_limit"],
+            "validator":validator_tempalte.format(**scale),
+            "generator":generator_template.format(**scale),
+            "generator_cmd":accumlate_gen_cmd,
+            "generator_time_limit_cmd":gen_cmd,
+            "checker":code_example["checker"],
+            "correct_submissions":code_example["correct_submissions"],
+            "incorrect_submissions":code_example["incorrect_submissions"]
+        }
+
+        problems.append(problem)
+    
+    return problems
 
 
 # ---------- main ----------
@@ -98,61 +125,12 @@ def main():
     if not examples:
         logger.info("No examples with usable code. Exit.")
         return
+    output_problems = []
+    for code_example in examples:
+        output_problems.extend(process_code_example_to_different_scale_problems(code_example))
+    
+    save_output_jsonl(output_problems,save_dir_path=save_dir_path,logger=logger)
 
-    output_problems: List[Dict[str, Any]] = []
-    output_code:List[Dict[str, Any]] = []
-    left_problems = examples[:]       # list
-    next_attempt_problems: List[Dict[str, Any]] = []
-
-    for attempt in range(1, args.max_attempts + 1):
-        total_problems = len(left_problems)
-        if total_problems == 0:
-            logger.info("No remaining problems. Stopping.")
-            break
-
-        total_batches = math.ceil(total_problems / args.batch_size)
-        logger.info(f"Attempt {attempt}/{args.max_attempts} | remaining={total_problems} | batches={total_batches}")
-
-        for b in range(total_batches):
-            b_start = b * args.batch_size
-            b_end = min((b + 1) * args.batch_size, total_problems)
-            batch_problems = left_problems[b_start:b_end]
-
-            logger.info(f"  Batch {b+1}/{total_batches} | size={len(batch_problems)}")
-
-                
-
-            batch_get_chat_api(
-                examples=batch_problems,
-                eng=args.model,
-                pre_fun=pre_fun,
-                post_fun=post_fun,
-                logger=logger,
-                n_processes=args.n_processes,
-                temperature=args.temperature,
-                timeout=args.timeout,
-                max_try=args.inner_max_try,
-                think=args.think,
-            )
-
-
-            _, todo_problems,code_list = verify_and_extract_generator_cmd(batch_problems,logger)
-
-
-
-            output_code.extend(code_list)
-
-            next_attempt_problems.extend(todo_problems)
-            
-            save_output_jsonl(output_code, save_dir_path=save_dir_path,  logger=logger, save_name="extracted_code.jsonl",meta_name="extracted_code_meta.json")
-
-            logger.info(f"    success={len(code_list)} | retry_next={len(todo_problems)}")
-
-        left_problems = next_attempt_problems
-        next_attempt_problems = []
-        logger.info(f"End of Attempt {attempt}: accumulated={len(output_problems)} | remaining={len(left_problems)}")
-
-    logger.info(f"Done. total_completed={len(output_problems)} | total_input={len(examples)}")
 
 # NO IMPLEMENT
 if __name__ == "__main__":

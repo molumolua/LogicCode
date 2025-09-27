@@ -203,6 +203,59 @@ Now, read the provided C++ validator program, the python dictionary `default_sca
 ```
 '''
 
+generator_cmd_prompt= '''
+You are given the following input:
+
+1. A C++ code, which is compiled into an executable file `./gen`. This code generates test cases for a competitive programming problem.
+2. A JSON object configuration, which outlines the problem's data size constraints. This configuration may reflect limits and conditions that are mentioned in the problem description.
+3. The data size constraints are crucial because they control the time complexity necessary to solve the problem, thus influencing the difficulty level. I will provide you with a list of JSON configurations, each corresponding to a different data size, arranged from smallest to largest.
+
+Your task is to generate a series of commands. These commands will execute the `./gen` file and will be wrapped in ```bash``` tags. Specifically, you must organize the commands into groups:
+
+- Each group should contain **20 commands** with different CLI arguments, and each group corresponds to a configuration in the list, sorted in ascending order of data size.
+- For example:
+    - When testing with the smallest configuration, the first **20 commands** should be generated.
+    - For the second configuration (slightly larger), generate **40 commands** (first 40 commands in sequence).
+    - For the third configuration, generate **60 commands**, and so on, ensuring that the groups grow in size according to the increasing configurations.
+- Insert **one single-line comment** between consecutive groups as a separator (e.g., `# ----- Group k: <brief note> -----`).
+- For every command, ensure it differs from others in its **CLI arguments** so we get diverse test cases within and across groups.
+
+**Key Requirements:**
+1. **Data Coverage for Edge Cases**: Regardless of which data size I select, ensure that the commands **cover all possible edge cases** for the problem. The commands should stress test the problem's limits and check the **maximum values** for each configuration.
+2. The data size of CLI arguments should be arranged from smallest to largest. 
+3. The commands should allow me to test across different levels of problem difficulty, ensuring that each configuration produces the necessary data to assess the problem's complexity and behavior across a range of sizes.
+4. **Group Separation**: Each group of commands should be separated by a **single-line comment** to clearly distinguish between different groups.
+
+**Output Format:**
+```bash
+# ----- Group 1: <note> -----
+./gen <args_for_cmd_1>
+...
+./gen <args_for_cmd_20>
+# ----- Group 2: <note> -----
+./gen <args_for_cmd_21>
+...
+./gen <args_for_cmd_60>
+...
+```
+
+Now, read the provided C++ generator program, the JSON object configuration,the list of JSON configurations of different data sizes and output the corresponding bash commands in ```bash ```.
+
+** C++ generator program:**
+```cpp
+{case_code}
+```
+** JSON object configuration:**
+```json
+{default_scale}
+```
+** List of JSON configurations of different data sizes:**
+```json
+{scale_list}
+```
+'''
+
+
 
 if __name__ == "__main__":
     # example usage
