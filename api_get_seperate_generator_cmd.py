@@ -9,16 +9,15 @@ from typing import Any, Dict, List, Optional
 
 
 from api import batch_get_chat_api
-from prompt import extract_validator_prompt
+from prompt import generator_40cmd_prompt
 from logger import setup_logger
 from process_dataset import load_and_prepare_dataset,save_output_jsonl,prepare_examples
-from extract import split_with_input_section,safe_format_template
-from after_extract import verify_and_extract_validator
+from extract import extract_last_code_block,split_with_input_section,safe_format_template
+from after_extract import verify_and_extract_seperate_generator_cmd
 import copy
-# ---------- helpers ----------
 
 def pre_fun(example):
-    return extract_validator_prompt.format(case_code=example['validator'],default_scale=example['extract_number']['default_scale'])
+    return generator_40cmd_prompt.format(case_code=example['generator'])
 
 
 def post_fun(example, reply):
@@ -88,6 +87,7 @@ def main():
         logger.info("No examples with usable code. Exit.")
         return
 
+    output_problems: List[Dict[str, Any]] = []
     output_code:List[Dict[str, Any]] = []
     left_problems = examples[:]       # list
     next_attempt_problems: List[Dict[str, Any]] = []
@@ -108,8 +108,7 @@ def main():
 
             logger.info(f"  Batch {b+1}/{total_batches} | size={len(batch_problems)}")
 
-            # print(batch_problems[0]['validator'])
-            # print(batch_problems[0]['extract_number'])
+                
 
             batch_get_chat_api(
                 examples=batch_problems,
@@ -123,33 +122,24 @@ def main():
                 max_try=args.inner_max_try,
                 think=args.think,
             )
-            # print(batch_problems[0]['answer'])
-            
-            _, todo_problems,code_list =   verify_and_extract_validator(batch_problems,logger)
 
 
-
-        #    print(safe_format_template(code_list[0]["extract_validator"]['validator_code'],code_list[0]["extract_number"]["default_scale"]))
-
+            success_problems, todo_problems, code_list = verify_and_extract_seperate_generator_cmd(batch_problems, logger)
 
 
-            
-            output_code.extend(code_list)
-
+            output_problems.extend(success_problems)
 
             next_attempt_problems.extend(todo_problems)
             
+            save_output_jsonl(output_problems, save_dir_path=save_dir_path,  logger=logger)
 
-            save_output_jsonl(output_code, save_dir_path=save_dir_path,  logger=logger, save_name="extracted_code.jsonl",meta_name="extracted_code_meta.json")
-
-            logger.info(f"    success=? | retry_next={len(todo_problems)}")
+            logger.info(f"success={len(output_problems)} | retry_next={len(todo_problems)}")
 
         left_problems = next_attempt_problems
         next_attempt_problems = []
-        logger.info(f"End of Attempt {attempt}: accumulated={len(output_code)} | remaining={len(left_problems)}")
+        logger.info(f"End of Attempt {attempt}: accumulated={len(output_problems)} | remaining={len(left_problems)}")
 
-    logger.info(f"Done. total_completed={len(output_code)} | total_input={len(examples)}")
-
+    logger.info(f"Done. total_completed={len(output_problems)} | total_input={len(examples)}")
 
 
 if __name__ == "__main__":

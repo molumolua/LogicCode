@@ -13,6 +13,7 @@ from prompt import generator_cmd_prompt
 from logger import setup_logger
 from process_dataset import load_and_prepare_dataset,save_output_jsonl,prepare_examples
 from after_extract import assemble_description
+from extract import safe_format_template
 import copy
 
 def process_code_example_to_different_scale_problems(code_example):
@@ -29,37 +30,46 @@ def process_code_example_to_different_scale_problems(code_example):
 
     validator_tempalte = code_example["extract_validator"]["validator_code"]
 
-    group_gen_cmd = code_example["extract_generator_cmd"]["group_gen_cmd"]
+    # group_gen_cmd = code_example["extract_generator_cmd"]["group_gen_cmd"]
 
 
-    assert len(scale_list) == len(group_gen_cmd)
-
+    # assert len(scale_list) == len(group_gen_cmd)
+    # print(len(group_gen_cmd))
+    # print(group_gen_cmd[0])
     problems = []
-    accumlate_gen_cmd = []
-    accumlate_flag = True
-    for idx,(scale,gen_cmd) in enumerate(zip(scale_list,group_gen_cmd)):
-        if accumlate_flag:
-            accumlate_gen_cmd.extend(gen_cmd)
-        if scale == default_scale:
-            accumlate_flag = False
-            
-        problem = {
-            "source":code_example['source'],
-            "id":code_example["id"]+"_{idx}".format(idx=idx),
-            "title":code_example["title"],
-            "description":assemble_description(before_input=before_input, input_section=input_template.format(**scale), after_input=after_input),
-            "time_limit":code_example["time_limit"],
-            "memory_limit":code_example["memory_limit"],
-            "validator":validator_tempalte.format(**scale),
-            "generator":generator_template.format(**scale),
-            "generator_cmd":accumlate_gen_cmd,
-            "generator_time_limit_cmd":gen_cmd,
-            "checker":code_example["checker"],
-            "correct_submissions":code_example["correct_submissions"],
-            "incorrect_submissions":code_example["incorrect_submissions"]
-        }
+    # accumlate_gen_cmd = []
+    # accumlate_flag = True
 
-        problems.append(problem)
+    # print(validator_tempalte)
+    # print(scale_list)
+    for idx,scale in enumerate(scale_list):
+    # for idx,(scale,gen_cmd) in enumerate(zip(scale_list,group_gen_cmd)):
+        # if accumlate_flag:
+        #     accumlate_gen_cmd.extend(gen_cmd['commands'])
+        # if scale == default_scale:
+        #     accumlate_flag = False
+        try:    
+            problem = {
+                "source":code_example['source'],
+                "id":code_example["id"]+"_{idx}".format(idx=idx),
+                "title":code_example["title"],
+                "description":assemble_description(before_input=before_input, input_section=safe_format_template(input_template,scale), after_input=after_input),
+                "time_limit":code_example["time_limit"],
+                "memory_limit":code_example["memory_limit"],
+                "validator":safe_format_template(validator_tempalte,scale),
+                "generator":safe_format_template(generator_template,scale),
+                # "generator_cmd":copy.deepcopy(accumlate_gen_cmd),
+                # "generator_time_limit_cmd":gen_cmd['commands'],
+                "checker":code_example["checker"],
+                "correct_submissions":code_example["correct_submissions"],
+                "incorrect_submissions":code_example["incorrect_submissions"]
+            }
+
+            problems.append(problem)
+        except Exception as e:
+            print("Error in formatting problem id:",code_example["id"]," scale:",scale)
+            print("Error message:",e)
+            continue
     
     return problems
 
@@ -132,6 +142,6 @@ def main():
     save_output_jsonl(output_problems,save_dir_path=save_dir_path,logger=logger)
 
 
-# NO IMPLEMENT
+
 if __name__ == "__main__":
     main()

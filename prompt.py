@@ -79,7 +79,7 @@ extract_number_prompt = '''
 - Map common algorithmic families to typical safe input sizes (guideline, adjust to domain):
   - O(n³): up to ~2e3 ops, often `n ≤ 150–300`.
   - O(n²): up to ~1e7 ops, often `n ≤ 3e3–1e4`.
-  - O(n log n): up to ~1e7–1e8 ops, often `n ≤ 1e5–5e5`.
+  - O(n log n): often `n ≤ 1e5–5e5`.
   - O(n): up to ~1e8 ops, often `n ≤ 1e6–1e7`.
   - O(m log n) graphs: `n ≤ 2e5`, `m ≤ 2e5–5e5`.
   - O(n√n) (e.g., Mo’s): `n ≤ 2e5` with careful constants.
@@ -96,25 +96,31 @@ extract_number_prompt = '''
 - Use **descriptive placeholder names**: `{{n}}`, `{{m}}`, `{{q}}`, `{{t}}`, `{{n_max}}`, `{{m_max}}`, `{{q_max}}`, `{{ai_max}}`, `{{weight_max}}`, etc.
 - Prefer `.format(**dict)`-style formatting (not f-strings) to match the exact requirement.
 
+### Numeric literal
+- **All numeric values** you place in `default_scale`, `small_scales`, and `large_scales` **must be Python/JSON-parseable numeric literals**:
+  - Allowed: integers like `1000000`; floats like `0.001`; scientific notation like `1e6` or `2.5e-3`.
+- Ensure **every value is a number type** (int or float) — **not** a string.
+- within INT32 range (±2e9) if possible; otherwise, INT64 (±9e18).
+- When these numbers appear in the rendered `template`, they should appear exactly as inserted (e.g., `1e6` or `1000000`), with no extra formatting.
+
+
 ### Output format (must follow exactly)
 - Return **one** Python code block with:
   - Module docstring explaining what was interpreted as “data scale”.
   - The three required top-level variables: `template`, `default_scale`, `small_scales`, `large_scales`.
-  - Brief inline comments justifying the chosen small/large tiers by complexity bands (e.g., “tier 1 supports O(n²) brute force because n≤300”, etc.).
-  - A tiny self-check at the bottom that asserts `template.format(**default_scale)` is a `str` (don’t print).
-- **Do not** include any extra prose outside the code block. **No prints, no execution, no external imports.**
+  - Brief inline comments justifying the chosen small/large tiers by complexity bands (e.g., “tier 1 supports O(n³) brute force because n≤300”, etc.).
 
 ### Edge cases
 - If the prompt has **multiple inputs** (e.g., arrays per test case), introduce placeholders for each relevant bound (`{{n_max}}`, `{{q_max}}`, `{{ai_max}}`, …).
 - If the original mixes absolute limits and typical values, set defaults to **exactly** the original absolute limits.
-- If time/memory limits meaningfully correspond to scale, keep them as placeholders too (e.g., `{{time_limit_sec}}`, `{{memory_limit_mb}}`) and scale only if the statement ties algorithm choice to them; otherwise keep as constants.
 
 ### Final reminder
 - Your code must be immediately usable as:
-  ```python
-  text = template.format(**default_scale)
-  # and similarly for any dict in small_scales / large_scales
-Lists small_scales and large_scales must each have length ≤ 3.
+```python
+text = template.format(**default_scale)
+# and similarly for any dict in small_scales / large_scales
+```
+- Lists small_scales and large_scales must each have length ≤ 3.
 
 Every dict in those lists must be complete (all placeholders provided).
 
@@ -255,7 +261,53 @@ Now, read the provided C++ generator program, the JSON object configuration,the 
 ```
 '''
 
+generator_40cmd_prompt = """
+You are given a *single* C++ source file that uses **testlib** and has already been compiled to an executable `./gen`. That program generates test cases for a competitive programming problem.
 
+Your job: **emit exactly forty (40) shell commands** that each run `./gen` with thoughtfully chosen CLI arguments so that the resulting 40 test files together provide broad, rigorous coverage:
+- edge cases (minimums, zeros, degenerate structures),
+- typical cases,
+- adversarial and pathological cases,
+- **stress tests hitting configured maxima**,
+- and diverse distributions/structures implied by the generator.
+
+### What you must read & infer from the code
+1. **Parse CLI options** by scanning for `opt<T>("name", ...)`, default values, enums/strings (e.g., `type`), and any derived constraints (caps, clamping, assertions).
+2. **Respect hard limits** found in code (e.g., `n = min(n, 2e5)`, `m = min(m, n*(n-1)/2)`, `assert(1 <= n && n <= 2e5)`, etc.). Never exceed them.
+3. Note any **coupled constraints** (e.g., `m` depends on `n`, connectivity flags, component counts, value ranges, parity constraints, sortedness flags).
+
+### Coverage plan (use as a checklist)
+Design the 40 commands to collectively cover the following categories (tailor names to the actual flags in the code):
+- **Min/degenerate**: smallest valid `n`, `m`, counts = 0/1, empty/singleton structures.
+- **Small structured**: lines/paths, stars, cliques, grids, simple cycles, trees, bipartite, etc. (if supported by `type` or toggles).
+- **Medium random**: moderate sizes with uniform or skewed distributions; different `type`/mode values.
+- **Corner-value ranges**: min/max for weights/values/coordinates, negative/zero/positive if allowed; duplicates/ties; sortedness on/off.
+- **Adversarial**: worst-case shapes for common algorithms (e.g., long chains, high diameter, many components, near-dense graphs, heavy duplicate keys), respecting constraints.
+- **Parameter cross-product**: combine flags that interact (e.g., `connected=0/1`, `distinct=0/1`, `directed=0/1`, `weighted=0/1`, etc.).
+- **Boundary-near**: just below/at maxima (e.g., `n = n_max-1`, `n = n_max`; `m` near caps).
+- **Stress maxima**: hit maximum feasible sizes allowed by the code and constraints.
+- **Invalid-guarded fronts**: if the generator internally clamps or rejects, choose values that *exercise* those branches while still producing valid output.
+
+### Output requirements (strict)
+- **Output exactly 40 commands**.
+- **Wrap them in a single fenced code block labeled `bash`**.
+- Each line must be a command that starts with `./gen` followed only by **valid CLI flags that the code supports** (e.g., `-n`, `-m`, `-type`, `-seed`, and any others discovered).
+- **No extra commentary, no blank lines, no redirections**, no `mkdir`, no `echo`, no shebangs—**just the 40 `./gen ...` lines**.
+- Do **not** invent flags; only use those present in the code.
+- **Respect all assertions and clamping logic**; never request an infeasible parameter combination.
+
+### IMPORTANT
+Return **only** one fenced code block:
+```bash
+./gen -flag1 ...
+...
+(40 lines total)
+
+** C++ generator program:**
+```cpp
+{case_code}
+```
+"""
 
 if __name__ == "__main__":
     # example usage

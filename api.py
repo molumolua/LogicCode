@@ -8,13 +8,14 @@ from functools import partial
 from multiprocessing import Pool
 from tqdm import tqdm
 from logger import setup_logger
-# BASE_URL="http://qwen3-235b-128k.api.sii.edu.cn/v1"
-BASE_URL="https://api.openai.com/v1"
-API_KEY=None
-MODEL="gpt-5"
+from zai import ZhipuAiClient
+client = ZhipuAiClient(api_key=None)
 
 
-client = OpenAI(base_url=BASE_URL,api_key=API_KEY)
+# BASE_URL="https://api.openai.com/v1"
+# API_KEY=None
+# MODEL="gpt-5"
+# client = OpenAI(base_url=BASE_URL,api_key=API_KEY)
 def get_oai_completion(prompt,model,temperature,think=False,stream=False):
     try:
         # print(prompt)

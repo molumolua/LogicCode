@@ -12,7 +12,7 @@ from api import batch_get_chat_api
 from prompt import generator_cmd_prompt
 from logger import setup_logger
 from process_dataset import load_and_prepare_dataset,save_output_jsonl,prepare_examples
-from extract import extract_last_code_block,split_with_input_section
+from extract import extract_last_code_block,split_with_input_section,safe_format_template
 from after_extract import verify_and_extract_generator_cmd
 import copy
 
@@ -24,7 +24,7 @@ def pre_fun(example):
 
     scale_list = list(reversed(small_scale_decrease)) + [default_scale] +large_scale_increase
 
-    case_code = example['extract_generator']['generator_code'].format(**scale_list[-1])
+    case_code = safe_format_template(example['extract_generator']['generator_code'],scale_list[-1])
 
     prompt = generator_cmd_prompt.format(case_code=case_code,default_scale=default_scale,scale_list=scale_list)
 
@@ -154,6 +154,5 @@ def main():
 
     logger.info(f"Done. total_completed={len(output_problems)} | total_input={len(examples)}")
 
-# NO IMPLEMENT
 if __name__ == "__main__":
     main()

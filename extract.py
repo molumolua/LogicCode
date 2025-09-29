@@ -172,6 +172,57 @@ def parse_gen_script(text: str) -> List[Dict[str, Any]]:
 
     return groups
 
+def parse_one_gen_script(text: str) -> Dict[str, Any]:
+    """
+    解析包含 './gen ...' 命令的脚本文本。
+    返回一个字典：
+        {
+          "note": str,            # 原始备注
+          "commands": List[str],  # 本组所有 ./gen 命令（按出现顺序）
+        }
+    """
+    lines = text.splitlines()
+    current = {
+                "note":"first_line",
+                "commands":[]
+    }
+
+
+    for line in lines:
+        s = line.strip()
+        if s and s.startswith("./gen "): 
+            current["commands"].append(s)
+
+    return current
+
+import re
+
+_PLACEHOLDER_RE = re.compile(r"\{([a-zA-Z_]\w*)\}")
+
+def safe_format_template(raw_template: str, values: dict) -> str:
+    """
+    安全渲染：保留 {name} 占位符；转义其他所有 { } 为 {{ }}，再 .format(values)。
+    """
+
+    # 1) 暂存合法占位符的位置，用哨兵标记，避免它们被转义
+    sentinels = []
+    def _mark(m):
+        name = m.group(1)
+        token = f"\x00PH_{len(sentinels)}\x00"  # 哨兵
+        sentinels.append((token, name))
+        return token
+
+    marked = _PLACEHOLDER_RE.sub(_mark, raw_template)
+
+    # 2) 全文转义剩余的大括号
+    escaped = marked.replace("{", "{{").replace("}", "}}")
+
+    # 3) 恢复占位符（把哨兵替换回 {name}）
+    for token, name in sentinels:
+        escaped = escaped.replace(token, "{%s}" % name)
+
+    # 4) 最终渲染
+    return escaped.format(**values)
 
 # if __name__ == "__main__":
 #     logger=setup_logger()

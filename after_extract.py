@@ -1,5 +1,5 @@
 from process_dataset import load_and_prepare_dataset,prepare_examples
-from extract import extract_last_code_block,parse_gen_script
+from extract import extract_last_code_block,parse_gen_script,parse_one_gen_script
 from logger import setup_logger
 import copy
 from typing import Tuple, Optional, List, Dict, Any
@@ -55,7 +55,7 @@ def build_problems_from_string(
         vars_dict = exec_and_return_values(code_str, required_keys, logger)
         if vars_dict is None:
             _logger.error("Failed to extract required variables from code.")
-            return None, None, None
+            return None, None, None, None, None, None, None
         template = vars_dict["template"]
         default_scale = vars_dict["default_scale"]
         small_scales = vars_dict["small_scales"]
@@ -64,37 +64,37 @@ def build_problems_from_string(
 
         if not isinstance(template, str):
             _logger.error("`template` must be str, got %r", type(template))
-            return None, None, None
+            return None, None, None, None, None, None, None
         if not isinstance(default_scale, dict):
             _logger.error("`default_scale` must be dict, got %r", type(default_scale))
-            return None, None, None
+            return None, None, None, None, None, None, None
         if not isinstance(small_scales, list) or not all(isinstance(x, dict) for x in small_scales):
             _logger.error("`small_scales` must be List[dict], got %r", small_scales)
-            return None, None, None
+            return None, None, None, None, None, None, None
         if not isinstance(large_scales, list) or not all(isinstance(x, dict) for x in large_scales):
             _logger.error("`large_scales` must be List[dict], got %r", large_scales)
-            return None, None, None
+            return None, None, None, None, None, None, None
 
         # 3) 干跑验证：确保 format 所需键齐全且可渲染
         try:
             _ = template.format(**default_scale)
         except Exception as e:
             _logger.exception("Failed to format template with default_scale: %s", e)
-            return None, None, None
+            return None, None, None, None, None, None, None
 
         for i, sc in enumerate(small_scales):
             try:
                 _ = template.format(**sc)
             except Exception as e:
                 _logger.exception("Failed to format template with small_scales[%d]: %s", i, e)
-                return None, None, None
+                return None, None, None, None, None, None, None
 
         for i, lc in enumerate(large_scales):
             try:
                 _ = template.format(**lc)
             except Exception as e:
                 _logger.exception("Failed to format template with large_scales[%d]: %s", i, e)
-                return None, None, None
+                return None, None, None, None, None, None, None
 
         # 4) 真正生成题面
         default_problem = template.format(**default_scale)
@@ -106,7 +106,7 @@ def build_problems_from_string(
     except Exception as e:
         # 捕获所有其它异常，保证不抛出到调用方
         _logger.exception("build_problems_from_string failed: %s", e)
-        return None, None, None
+        return None, None, None, None, None, None, None
     
 
 def verify_default_problem_and_extract_large_small_problems(default_problems,logger):
@@ -241,6 +241,26 @@ def verify_and_extract_generator_cmd(code_list,logger):
             left_problems.append(example)
 
     return None,left_problems,return_code_list
+
+
+def verify_and_extract_seperate_generator_cmd(code_list,logger):
+    _logger = logger
+    success_problems=[]
+    left_problems = []
+    return_code_list = []
+    for example in code_list:
+        code,lang = extract_last_code_block(example['answer'])
+        if lang and lang =="bash":
+            gen_cmd_list = parse_one_gen_script(code)
+            success_problems.append({
+                "generator_cmd":gen_cmd_list,
+                **example
+            })
+        else:
+            _logger.error("No Bash code.")
+            left_problems.append(example)
+
+    return success_problems,left_problems,None
 
 if __name__ == "__main__":
     logger = setup_logger()

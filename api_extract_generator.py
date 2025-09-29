@@ -11,9 +11,10 @@ from typing import Any, Dict, List, Optional
 from api import batch_get_chat_api
 from prompt import extract_generator_prompt
 from logger import setup_logger
-from process_dataset import load_and_prepare_dataset,save_output_jsonl,prepare_examples
+from process_dataset import load_and_prepare_dataset,save_output_jsonl,prepare_examples,normalize_jsonl_file
 from extract import split_with_input_section
 from after_extract import verify_and_extract_generator
+from extract import safe_format_template
 import copy
 # ---------- helpers ----------
 
@@ -129,7 +130,7 @@ def main():
 
 
 
-            print(code_list[0]["extract_generator"]['generator_code'].format(**code_list[0]["extract_number"]["default_scale"]))
+#            print(safe_format_template(code_list[0]["extract_generator"]['generator_code'],code_list[0]["extract_number"]["default_scale"]))
 
 
 
@@ -141,7 +142,6 @@ def main():
             
 
             save_output_jsonl(output_code, save_dir_path=save_dir_path,  logger=logger, save_name="extracted_code.jsonl",meta_name="extracted_code_meta.json")
-
             logger.info(f"    success=? | retry_next={len(todo_problems)}")
 
         left_problems = next_attempt_problems
