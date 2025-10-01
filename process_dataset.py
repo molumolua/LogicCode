@@ -291,7 +291,104 @@ def save_output_jsonl(
     logger.info(f"Saved meta:    {out_meta}")
 
 
+import pyarrow as pa
+import pyarrow.parquet as pq
+import json
+from pathlib import Path
+from datetime import datetime
+from typing import List, Dict, Any
 
+def save_output_parquet(
+    output_problems: List[Dict[str, Any]],
+    save_dir_path: Path,
+    logger,
+    save_name: str | None = None,
+    meta_name: str | None = None,
+    *,
+    # 可按需扩展：哪些 key 的值若是 dict / list[dict]，要转为 JSON 字符串
+    dict_keys_to_dump: tuple[str, ...] = ("default_scale",),
+    list_of_dict_keys_to_dump: tuple[str, ...] = ("small_scales", "large_scales"),
+) -> None:
+    """
+    将 output_problems 写为 Parquet（保持一层嵌套结构），
+    但对 default_scale / small_scales / large_scales 做“定点 JSON 字符串化”，
+    避免 Arrow/HF Datasets 对变形 dict 推断 schema 出错。
+    """
+
+    def _dump_json(o: Any) -> str:
+        # 统一风格，便于去重/可读性
+        return json.dumps(o, ensure_ascii=False, sort_keys=True)
+
+    def _jsonable_with_policy(obj: Any) -> Any:
+        """
+        深度遍历，仅当 key 命中策略时将 dict/list[dict] 转为 JSON 字符串；
+        其他情况遵循你的原始 _to_jsonable 逻辑。
+        """
+        # 标量直接返回
+        if isinstance(obj, (str, int, float, bool)) or obj is None:
+            return obj
+
+        # list/tuple：逐元素处理（保持嵌套 list，不做扁平化）
+        if isinstance(obj, (list, tuple)):
+            return [_jsonable_with_policy(x) for x in obj]
+
+        # dict：保留一层嵌套结构，仅对命中 key 的值进行“定点字符串化”
+        if isinstance(obj, dict):
+            out = {}
+            for k, v in obj.items():
+                # 情况1：default_scale 等“单个 dict” → JSON 字符串
+                if k in dict_keys_to_dump and isinstance(v, dict):
+                    out[k + "_json"] = _dump_json(v)
+                # 情况2：small_scales / large_scales 等“list[dict]” → list[str]
+                elif k in list_of_dict_keys_to_dump and isinstance(v, (list, tuple)):
+                    if all(isinstance(x, dict) for x in v):
+                        out[k + "_json"] = [_dump_json(x) for x in v]  # list[str]
+                    else:
+                        # 混合类型时，仍递归处理，保证健壮性
+                        out[k] = _jsonable_with_policy(v)
+                else:
+                    out[k] = _jsonable_with_policy(v)
+            return out
+
+        # 其他不可序列化类型降级为字符串
+        return str(obj)
+
+    ts = datetime.now().strftime("%Y%m%d-%H%M%S")
+    out_parquet = save_dir_path / (save_name or "output_problems.parquet")
+    out_meta = save_dir_path / (meta_name or "meta.json")
+
+    # 处理数据：将每条记录转换成可以保存为表格格式的数据
+    processed_data = [_jsonable_with_policy(ex) for ex in output_problems]
+
+    # Convert processed data to PyArrow Table
+    try:
+        # We can directly use the pyarrow Table.from_pandas if the data is in DataFrame format
+        import pandas as pd
+        df = pd.json_normalize(processed_data)
+        table = pa.Table.from_pandas(df)
+    except Exception as e:
+        logger.error(f"Error during converting data to PyArrow Table: {e}")
+        raise
+
+    # Save the table as a Parquet file
+    pq.write_table(table, out_parquet)
+
+    # Write meta
+    meta = {
+        "timestamp": ts,
+        "total_completed": len(output_problems),
+        "output_path": str(out_parquet),
+        "policy": {
+            "dict_keys_to_dump": list(dict_keys_to_dump),
+            "list_of_dict_keys_to_dump": list(list_of_dict_keys_to_dump),
+        },
+    }
+    with out_meta.open("w", encoding="utf-8") as mf:
+        json.dump(meta, mf, ensure_ascii=False, indent=2)
+
+    logger.info(f"Saved outputs: {out_parquet}  (rows={len(output_problems)})")
+    logger.info(f"Saved meta:    {out_meta}")
+    
 
 # fix_jsonl_for_arrow.py
 import json, re, math, pathlib

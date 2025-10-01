@@ -2,17 +2,17 @@
 set -euo pipefail
 
 MAX_ROWS=200
-LOAD_DIR="D:\\Research\\CodeAdapt\\Code-Contests-Plus\default_single"
+LOAD_DIR=".\\Code-Contests-Plus\default_single"
 LOAD_TYPE="parquet"
 # MODEL="gpt-5-mini-2025-08-07"
 MODEL="glm-4.5"
 TEMPERATURE=0.6
 FILE_GLOB="extracted_code.jsonl"
-SAVE_DESCRIPTION_DIR="D:\\Research\\CodeAdapt\\Code-Contests-Plus\\extract_description"
-SAVE_GENERATOR_DIR="D:\\Research\\CodeAdapt\\Code-Contests-Plus\\extract_generator"
-SAVE_VALIDATOR_DIR="D:\\Research\\CodeAdapt\\Code-Contests-Plus\\extract_validator"
-SAVE_GENERATOR_CMD_DIR="D:\\Research\\CodeAdapt\\Code-Contests-Plus\\extract_generator_cmd"
-SAVE_FINAL_DIR="D:\\Research\\CodeAdapt\\Code-Contests-Plus\\different_scales"
+SAVE_DESCRIPTION_DIR=".\\Code-Contests-Plus\\extract_description"
+SAVE_GENERATOR_DIR=".\\Code-Contests-Plus\\extract_generator"
+SAVE_VALIDATOR_DIR=".\\Code-Contests-Plus\\extract_validator"
+SAVE_GENERATOR_CMD_DIR=".\\Code-Contests-Plus\\extract_generator_cmd"
+SAVE_FINAL_DIR=".\\Code-Contests-Plus\\different_scales"
 N_PROCESSES=10
 # python api_extract_description.py \
 #     --max_rows ${MAX_ROWS} \

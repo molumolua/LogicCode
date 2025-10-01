@@ -88,7 +88,7 @@ def main():
     if not examples:
         logger.info("No examples with usable code. Exit.")
         return
-
+    
     output_code:List[Dict[str, Any]] = []
     left_problems = examples[:]       # list
     next_attempt_problems: List[Dict[str, Any]] = []

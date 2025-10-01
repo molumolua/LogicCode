@@ -6,14 +6,11 @@ import json
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional
+from tqdm import tqdm
 
-
-from api import batch_get_chat_api
-from prompt import generator_cmd_prompt
 from logger import setup_logger
-from process_dataset import load_and_prepare_dataset,save_output_jsonl,prepare_examples
-from after_extract import assemble_description
-
+from process_dataset import load_and_prepare_dataset,prepare_examples,save_output_parquet
+import copy
 import shlex
 import subprocess
 from pathlib import Path
@@ -108,8 +105,8 @@ def generator_validator_pipeline(
 
     gen_cpp = src_dir / "generator.cpp"
     val_cpp = src_dir / "validator.cpp"
-    gen_bin = bin_dir / "gen.exe"
-    val_bin = bin_dir / "val.exe"
+    gen_bin = bin_dir / "gen"
+    val_bin = bin_dir / "val"
 
     # --- Write sources (with minimal de-escaping) ---
     try:
@@ -289,11 +286,12 @@ def build_and_run_reference_solution(
     bin_dir.mkdir(parents=True, exist_ok=True)
 
     lang = _detect_solution_lang(solution_code)
-    outputs: List[str] = []
+    checked_outputs: List[str] = []
+    checked_inputs:List[str] = []
 
     if lang == "cpp":
         sol_cpp = src_dir / "solution.cpp"
-        sol_bin = bin_dir / "sol.exe"
+        sol_bin = bin_dir / "sol"
         # 处理字符串里的裸换行，避免 printf("...\n") 被拆断
         sol_cpp.write_text(fix_newlines_in_cpp_strings(solution_code), encoding="utf-8")
 
@@ -328,19 +326,17 @@ def build_and_run_reference_solution(
                 )
             except subprocess.TimeoutExpired:
                 if logger: logger.warning(f"[ref #{i}] Solution timed out.")
-                outputs.append("")
                 continue
             except FileNotFoundError:
                 if logger: logger.error("Reference binary missing unexpectedly.")
-                outputs.append("")
                 continue
 
             if proc.returncode == 0:
-                outputs.append(proc.stdout)
+                checked_inputs.append(inp)
+                checked_outputs.append(proc.stdout)
             else:
                 if logger:
                     logger.warning(f"[ref #{i}] Non-zero exit {proc.returncode}. stderr:\n{proc.stderr}")
-                outputs.append("")
 
     else:  # python
         sol_py = bin_dir / "sol.py"
@@ -360,41 +356,38 @@ def build_and_run_reference_solution(
                 )
             except subprocess.TimeoutExpired:
                 if logger: logger.warning(f"[ref #{i}] Python solution timed out.")
-                outputs.append("")
                 continue
             except FileNotFoundError:
                 if logger: logger.error("Python interpreter not found.")
-                outputs.append("")
                 continue
 
             if proc.returncode == 0:
-                outputs.append(proc.stdout)
+                checked_inputs.append(inp)
+                checked_outputs.append(proc.stdout)
             else:
                 if logger:
                     logger.warning(f"[ref #{i}] Non-zero exit {proc.returncode}. stderr:\n{proc.stderr}")
-                outputs.append("")
 
-    return outputs
+    return checked_inputs,checked_outputs
 
-# ---------- main ----------
 
+def process_and_save_examples(batch_idx,examples, save_dir_path, logger):
+    save_name = "examples_batch_{idx}.parquet".format(idx=batch_idx)  # Default save name for the first batch
+    meta_name = "meta_batch_{idx}.json".format(idx=batch_idx)
+    logger.info(f"Saving examples to {save_name}.")
+    save_output_parquet(examples, save_dir_path=save_dir_path, logger=logger, save_name=save_name,meta_name=meta_name)
+    examples.clear()  # Clear examples from memory after saving
+    
 def main():
     parser = argparse.ArgumentParser(description="Batch prompting on local Parquet (CodeContests-like)")
-    # 数据与加载
+    # Parse arguments
     parser.add_argument("--load_type",type=str,default="json",help="json or parquet")
-    parser.add_argument("--load_dir", type=str,
-                        default="../Dataset",
-                        help="Directory containing local parquet shards")
-    parser.add_argument("--split", type=str, default="train", choices=["train", "test", "valid", "validation"],
-                        help="Which split to load (matched by filename prefix e.g., train-*.parquet)")
-    parser.add_argument("--file_glob", type=str, default=None,
-                        help="Optional custom glob, e.g. 'train-*.parquet'; if set, overrides --split matching")
-    parser.add_argument("--drop_list", type=list, default=[],
-                        help="Drop heavy columns if needed (e.g., 'private_test_cases')")
-    parser.add_argument("--start_problem_idx", type=int, default=0,
-                        help="Start index in the merged dataset")
-    parser.add_argument("--max_rows", type=int, default=None,
-                        help="Limit number of rows to load after start_problem_idx (None = all)")
+    parser.add_argument("--load_dir", type=str, default="../Dataset", help="Directory containing local parquet shards")
+    parser.add_argument("--split", type=str, default="train", choices=["train", "test", "valid", "validation"], help="Which split to load (matched by filename prefix e.g., train-*.parquet)")
+    parser.add_argument("--file_glob", type=str, default=None, help="Optional custom glob, e.g. 'train-*.parquet'; if set, overrides --split matching")
+    parser.add_argument("--drop_list", type=list, default=[], help="Drop heavy columns if needed (e.g., 'private_test_cases')")
+    parser.add_argument("--start_problem_idx", type=int, default=0, help="Start index in the merged dataset")
+    parser.add_argument("--max_rows", type=int, default=None, help="Limit number of rows to load after start_problem_idx (None = all)")
     parser.add_argument("--save_dir", type=str, default="./save")
     # 推理与并行
     parser.add_argument("--model", type=str, default="gpt-5", help="Model name for batch_get_chat_api")
@@ -405,10 +398,9 @@ def main():
     parser.add_argument("--extract_code", action="store_true", default=False, help="Whether to extract code from dataset")
 
     # 批次与重试
-    parser.add_argument("--batch_size", type=int, default=256, help="Batch size per attempt")
+    parser.add_argument("--batch_size", type=int, default=128, help="Batch size for save.")
     parser.add_argument("--max_attempts", type=int, default=3, help="Outer retry attempts over remaining problems")
     parser.add_argument("--inner_max_try", type=int, default=3, help="Inner retry count passed to batch_get_chat_api")
-
     
     args = parser.parse_args()
 
@@ -433,21 +425,26 @@ def main():
         start_idx=args.start_problem_idx,
         max_rows=args.max_rows,
         logger=logger,
-        extract_code=args.extract_code)
-    
+        extract_code=args.extract_code
+    )
+
     if not examples:
         logger.info("No examples with usable code. Exit.")
         return
-    
+
     enriched_examples = []  # ← 用于保存带 ground_truth 的样本
-    for example in examples:
-        generator_cmd=example["generator_cmd"]
-        if isinstance(generator_cmd,dict):
+    batch_idx = 1  # Start with the first batch
+    
+
+    for example in tqdm(examples, desc="Processing examples", unit="example", ncols=100, ascii=True):
+        generator_cmd = example["generator_cmd"]
+        if isinstance(generator_cmd, dict):
             generator_cmd_str_list = generator_cmd['commands']
-        elif isinstance(generator_cmd,List):
-            generator_cmd_str_list=generator_cmd
+        elif isinstance(generator_cmd, List):
+            generator_cmd_str_list = generator_cmd
         else:
-            logger.error("No generator cmd find.")
+            logger.error("No generator cmd found.")
+        
         # 1) 运行 generator + validator 得到通过校验的 inputs
         passed_inputs = generator_validator_pipeline(
             generator_str=example['generator'],
@@ -473,7 +470,7 @@ def main():
             continue
 
         if ref_code:
-            outputs = build_and_run_reference_solution(
+            checked_inputs,checked_outputs = build_and_run_reference_solution(
                 solution_code=ref_code,
                 inputs=passed_inputs,
                 logger=logger
@@ -483,16 +480,26 @@ def main():
             continue
 
         # 3) 组装 ground_truth 字段
-        example['ground_truth'] = {
-            "inputs": passed_inputs,
-            "outputs": outputs,
+        enriched_example = copy.deepcopy(example)
+        enriched_example['ground_truth'] = {
+            "inputs": checked_inputs,
+            "outputs": checked_outputs,
             "checker": example['checker']
         }
 
-        enriched_examples.append(example)
+        enriched_examples.append(enriched_example)
 
-    save_output_jsonl(enriched_examples, save_dir_path=save_dir_path, logger=logger)
+        # Check if examples array has reached the batch size and save it
+        if len(enriched_examples) >= args.batch_size:
+            logger.info(f"Saving batch {batch_idx}.")
+            process_and_save_examples(batch_idx,enriched_examples, save_dir_path, logger)
+            batch_idx += 1  # Increment the batch index
+            
 
+    # Save remaining examples if any
+    if enriched_examples:
+        logger.info(f"Saving batch {batch_idx}.")
+        process_and_save_examples(batch_idx,enriched_examples, save_dir_path, logger)
 
 if __name__ == "__main__":
     main()
