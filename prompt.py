@@ -309,6 +309,87 @@ Return **only** one fenced code block:
 ```
 """
 
+
+generate_logic_problem_prompt = """
+You are given a problem statement from an algorithmic competition, which includes a valid test case. 
+Your task is to write a Python function `generate_logic_problem(test_case)` that:
+
+- Takes a single test case as input, where `test_case` is a string representing the actual input for the problem.
+- Parses the `test_case` string to extract the necessary values for generating a logic problem.
+- Returns a string that represents a logic problem based on the parsed values.
+- The returned string should be phrased as a logical reasoning question, incorporating the provided input values.
+
+### Requirements:
+1. **Input Format**:
+   - The function will receive one valid test case as a string.
+   - The test case is represented as a string that contains the input in the format specified by the competition. If the problem includes multiple test cases, only one test case will be given in the input string, and the number of test cases will be `1`.
+   
+2. **Output Format**:
+   - The function must return a string, which is a logic problem or question related to the parsed values from the test case.
+   - Ask **only one** question based on the original question in the problem statement.
+   - If there is an error in parsing the input (for example, if the test case format is invalid), the function should return an error message indicating the problem with the input.
+
+3. **Assumptions**:
+   - The input test case is always valid and provided as a string.
+   - The function handles only one test case per call.
+   - Ensure that the logic problem generated makes sense and is coherent based on the provided input.
+
+### Example Problem Formats:
+
+#### Example 1: Simple Sum
+- **Problem Statement**: Given a problem that requires summing an array of integers.
+- **Test Case**: `"3\n1 2 3"`
+- **Logic Question**: "What is the sum of the integers in the array [1, 2, 3]?"
+
+#### Example 2: Multiple Test Cases
+- **Problem Statement**: Given a problem that requires summing an array of integers. The input contains multiple test cases.
+- **Test Case**: `"1\n3\n1 2 3"`
+- **Logic Question**: "What is the sum of the integers in the array [1, 2, 3]?"
+
+### Task:
+Write a Python function `generate_logic_problem(test_case: str) -> str` that follows the above guidelines:
+- First, parse the `test_case` string to extract the input values.
+- If parsing is successful, return a logic question based on the extracted values.
+- If an error occurs during parsing, return an error message indicating the issue.
+- If the original problem statement requires multiple test cases, the test case string will still contain only one test case with the number of test cases indicated as `1`.
+
+### Output:
+Wrap your Python function in a code block labeled `python`.
+
+**Problem Statement:**
+{problem}
+"""
+
+
+generate_test_case_prompt = '''
+You are given a problem statement from an algorithmic competition. Your task is to generate a list of valid test cases for this problem, in the format of a JSON array. Each element in the array should be an object with a key 'test_case' and the corresponding value should be a string representing a valid input for the problem. The input should follow the problem description, and for problems that involve multiple test cases, each input should be a single test case represented as a string. 
+
+### Specific requirements:
+1. Each test case should contain a single, valid input that adheres to the problem statement.
+2. If the problem involves multiple test cases, the input should include the count of test cases (1) as the first line.
+3. The number of tokens in each test case should not exceed 200 tokens.
+4. The test cases in the list should be ordered from simplest to most complex.
+  
+### Example format for the output (JSON array):
+```json
+[
+  {{
+    "test_case": "input1"
+  }},
+  {{
+    "test_case": "input2"
+  }},
+  ...
+]
+```
+The input problem statement may include various types of data, such as integers, strings, arrays, etc., and you should ensure the test cases conform to these formats.
+
+**Problem Statement:**
+{problem}
+'''
+
+
+
 if __name__ == "__main__":
     # example usage
     case_code = "print(42)"

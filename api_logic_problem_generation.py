@@ -9,17 +9,17 @@ from typing import Any, Dict, List, Optional
 
 
 from api import batch_get_chat_api
-from prompt import extract_number_prompt
+from prompt import generate_logic_problem_prompt
 from logger import setup_logger
 from process_dataset import load_and_prepare_dataset,save_output_jsonl,prepare_examples
 from extract import extract_last_code_block,split_with_input_section
-from after_extract import verify_default_problem_and_extract_large_small_problems
+from after_extract import verify_logic_problem_generation
 import copy
 # ---------- helpers ----------
 
 def pre_fun(example):
     # 这里的 example 已经由 prepare_examples() 保证带 "code"
-    return extract_number_prompt.format(problem=example["description_input_section"])
+    return generate_logic_problem_prompt.format(problem=example["description"])
 
 
 def post_fun(example, reply):
@@ -70,7 +70,6 @@ def main():
     save_dir_path.mkdir(parents=True, exist_ok=True)
     logger.info(f"Output dir: {save_dir_path}")
 
-    # 读取 parquet + 组装为带 "code" 的 examples
     dataset = load_and_prepare_dataset(
         load_type=args.load_type,
         load_dir=Path(args.load_dir),
@@ -89,76 +88,58 @@ def main():
     if not examples:
         logger.info("No examples with usable code. Exit.")
         return
-    print(examples[0])
-    # output_problems: List[Dict[str, Any]] = []
-    # output_code:List[Dict[str, Any]] = []
-    # left_problems = examples[:]       # list
-    # next_attempt_problems: List[Dict[str, Any]] = []
+    # print(examples[0]['description'])
+    output_problems: List = []
+    left_problems = examples[:]       # list
+    next_attempt_problems: List[Dict[str, Any]] = []
 
-    # for attempt in range(1, args.max_attempts + 1):
-    #     total_problems = len(left_problems)
-    #     if total_problems == 0:
-    #         logger.info("No remaining problems. Stopping.")
-    #         break
+    for attempt in range(1, args.max_attempts + 1):
+        total_problems = len(left_problems)
+        if total_problems == 0:
+            logger.info("No remaining problems. Stopping.")
+            break
 
-    #     total_batches = math.ceil(total_problems / args.batch_size)
-    #     logger.info(f"Attempt {attempt}/{args.max_attempts} | remaining={total_problems} | batches={total_batches}")
+        total_batches = math.ceil(total_problems / args.batch_size)
+        logger.info(f"Attempt {attempt}/{args.max_attempts} | remaining={total_problems} | batches={total_batches}")
 
-    #     for b in range(total_batches):
-    #         b_start = b * args.batch_size
-    #         b_end = min((b + 1) * args.batch_size, total_problems)
-    #         batch_problems = left_problems[b_start:b_end]
+        for b in range(total_batches):
+            b_start = b * args.batch_size
+            b_end = min((b + 1) * args.batch_size, total_problems)
+            batch_problems = left_problems[b_start:b_end]
 
-    #         logger.info(f"  Batch {b+1}/{total_batches} | size={len(batch_problems)}")
-
-    #         extract_input_problems=[]
-    #         for problem in batch_problems:
-    #             before_input, input_section, after_input = split_with_input_section(problem['description'])
-    #             if before_input and input_section and after_input:
-    #                 problem['description_before_input']=before_input
-    #                 problem['description_input_section']=input_section
-    #                 problem['description_after_input']=after_input
-    #                 extract_input_problems.append(problem)
-    #                 # print("=== BEFORE ===")
-    #                 # print(before_input)
-    #                 # print("=== INPUT ===")
-    #                 # print(input_section)
-    #                 # print("=== AFTER ===")
-    #                 # print(after_input)
+            logger.info(f"  Batch {b+1}/{total_batches} | size={len(batch_problems)}")
                 
 
-    #         batch_get_chat_api(
-    #             examples=extract_input_problems,
-    #             eng=args.model,
-    #             pre_fun=pre_fun,
-    #             post_fun=post_fun,
-    #             logger=logger,
-    #             n_processes=args.n_processes,
-    #             temperature=args.temperature,
-    #             timeout=args.timeout,
-    #             max_try=args.inner_max_try,
-    #             think=args.think,
-    #         )
+            batch_get_chat_api(
+                examples=batch_problems,
+                eng=args.model,
+                pre_fun=pre_fun,
+                post_fun=post_fun,
+                logger=logger,
+                n_processes=args.n_processes,
+                temperature=args.temperature,
+                timeout=args.timeout,
+                max_try=args.inner_max_try,
+                think=args.think,
+            )
 
 
-    #         _, todo_problems,code_list = verify_default_problem_and_extract_large_small_problems(extract_input_problems,logger)
+            successed_problems, todo_problems= verify_logic_problem_generation(batch_problems,logger)
 
-    #         output_code.extend(code_list)
+            output_problems.extend(successed_problems)
 
-    #         next_attempt_problems.extend(todo_problems)
+            next_attempt_problems.extend(todo_problems)
 
-    #         save_output_jsonl(output_code, save_dir_path=save_dir_path,  logger=logger, save_name="extracted_code.jsonl",meta_name="extracted_code_meta.json")
+            save_output_jsonl(output_problems, save_dir_path=save_dir_path,  logger=logger, save_name="output_problems.jsonl",meta_name="output_problems_meta.json")
 
-    #         logger.info(f"    success={len(code_list)} | retry_next={len(todo_problems)}")
+            logger.info(f"    success={len(successed_problems)} | retry_next={len(todo_problems)}")
 
-    #     left_problems = next_attempt_problems
-    #     next_attempt_problems = []
-    #     logger.info(f"End of Attempt {attempt}: accumulated={len(output_problems)} | remaining={len(left_problems)}")
+        left_problems = next_attempt_problems
+        next_attempt_problems = []
+        logger.info(f"End of Attempt {attempt}: accumulated={len(output_problems)} | remaining={len(left_problems)}")
 
-    # logger.info(f"Done. total_completed={len(output_problems)} | total_input={len(examples)}")
+    logger.info(f"Done. total_completed={len(output_problems)} | total_input={len(examples)}")
 
-    # # # 保存
-    # # save_output_jsonl(output_problems, save_dir_path=save_dir_path,logger=logger)
 
 
 if __name__ == "__main__":

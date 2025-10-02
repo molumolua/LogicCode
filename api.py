@@ -8,8 +8,8 @@ from functools import partial
 from multiprocessing import Pool
 from tqdm import tqdm
 from logger import setup_logger
-# from zai import ZhipuAiClient
-# client = ZhipuAiClient(api_key=None)
+from zai import ZhipuAiClient
+client = ZhipuAiClient(api_key="")
 
 
 # BASE_URL="https://api.openai.com/v1"

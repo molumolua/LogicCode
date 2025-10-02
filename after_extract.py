@@ -1,9 +1,11 @@
 from process_dataset import load_and_prepare_dataset,prepare_examples
-from extract import extract_last_code_block,parse_gen_script,parse_one_gen_script
+from extract import extract_last_code_block,parse_gen_script,parse_one_gen_script,get_function_code_from_str
 from logger import setup_logger
 import copy
 from typing import Tuple, Optional, List, Dict, Any
-
+import inspect
+import json
+from exec_and_verify import *
 def assemble_description(before_input, input_section, after_input):
     parts = []
     if before_input:
@@ -117,6 +119,7 @@ def verify_default_problem_and_extract_large_small_problems(default_problems,log
         success_flag=False
         if lang and lang =="python":
             # print(code)
+            # exit(1)
             default_problem, small_problems, large_problems,template, default_scale, small_scales, large_scales = build_problems_from_string(code,logger)
             if default_problem and small_problems and large_problems:
                 code_list.append({
@@ -152,6 +155,35 @@ def verify_default_problem_and_extract_large_small_problems(default_problems,log
         
     
     return None,left_problems, code_list
+
+
+def verify_logic_problem_generation(default_problems,logger):
+    _logger = logger
+    
+    left_problems=[]
+    success_problems=[]
+    for example in default_problems:
+        code,lang = extract_last_code_block(example['answer'])
+        success_flag=False
+        if lang and lang =="python":
+            function_code = get_function_code_from_str(code,"generate_logic_problem")
+            if function_code is None:
+                _logger.error("Failed to extract required function from code.")
+            else:
+                success_flag=True
+                # print(function_code)
+                success_problems.append({
+                    "generate_logic_problem":{
+                        "lang":lang,
+                        "function":function_code
+                    },
+                    **example
+                })
+                
+        if not success_flag:
+            left_problems.append(example)
+    return success_problems,left_problems
+
 
 def verify_and_extract_generator(code_list,logger):
     _logger = logger
@@ -243,24 +275,29 @@ def verify_and_extract_generator_cmd(code_list,logger):
     return None,left_problems,return_code_list
 
 
-def verify_and_extract_seperate_generator_cmd(code_list,logger):
+def verify_and_extract_test_case(code_list,logger):
     _logger = logger
     success_problems=[]
     left_problems = []
-    return_code_list = []
     for example in code_list:
         code,lang = extract_last_code_block(example['answer'])
-        if lang and lang =="bash":
-            gen_cmd_list = parse_one_gen_script(code)
-            success_problems.append({
-                "generator_cmd":gen_cmd_list,
-                **example
-            })
+        if lang and lang =="json":
+            try:
+                # print(code)
+                json_list = json.loads(code)
+                
+                success_problems.append({
+                    "test_case_list":json_list,
+                    **example
+                })
+            except Exception as e:
+                _logger.error("Error in load json list.")
         else:
             _logger.error("No Bash code.")
             left_problems.append(example)
 
-    return success_problems,left_problems,None
+    return success_problems,left_problems
+
 
 if __name__ == "__main__":
     logger = setup_logger()

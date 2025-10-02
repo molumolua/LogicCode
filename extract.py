@@ -224,6 +224,56 @@ def safe_format_template(raw_template: str, values: dict) -> str:
     # 4) 最终渲染
     return escaped.format(**values)
 
+def get_function_code_from_str(code_str, function_name):
+    # 查找函数定义的位置
+    start_index = code_str.find(f"def {function_name}")
+    if start_index == -1:
+        return None  # 如果没找到函数定义，返回 None
+    
+    # 从函数定义的位置开始，找到函数体的结束
+    def_indent_level = None  # 用来记录函数的缩进级别
+    indent_level = None
+    function_code = code_str[start_index:]  # 从函数定义开始提取代码
+    in_multiline_comment = False  # 标志是否在多行注释中
+    lines = function_code.splitlines()
+    function_lines = []
+    
+    for line in lines:
+        # 跳过单行注释
+        if line.strip().startswith("#"):
+            continue
+        
+        # 处理多行注释
+        if '"""' in line or "'''" in line:
+            # 判断是否是多行注释的开始或结束
+            if not in_multiline_comment:
+                in_multiline_comment = True
+                continue  # 跳过注释开始行
+            else:
+                in_multiline_comment = False
+                continue  # 跳过注释结束行
+        
+        if in_multiline_comment:
+            continue  # 如果在多行注释中，跳过该行
+        
+        
+        if def_indent_level is None:
+            # 首次确定函数的缩进级别
+            def_indent_level = len(line) - len(line.lstrip())
+            function_lines.append(line)
+        else:
+            if indent_level is None:
+                indent_level = len(line) - len(line.lstrip())
+            if indent_level:
+                if len(line) - len(line.lstrip()) >= indent_level:
+                    function_lines.append(line)
+                else:
+                    break  # 当缩进不符合时，表示函数结束
+    
+    return '\n'.join(function_lines)
+
+    
+    
 # if __name__ == "__main__":
 #     logger=setup_logger()
 #     dataset = load_and_prepare_dataset("/inspire/hdd/global_user/xucaijun-253108120121/Dataset/hf_datasets/code_contest_upgrade_1",file_glob="output_problems.jsonl",logger=logger,load_type="json")
