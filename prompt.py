@@ -315,9 +315,10 @@ You are given a problem statement from an algorithmic competition, which include
 Your task is to write a Python function `generate_logic_problem(test_case)` that:
 
 - Takes a single test case as input, where `test_case` is a string representing the actual input for the problem.
-- Parses the `test_case` string to extract the necessary values for generating a logic problem.
-- Returns a string that represents a logic problem based on the parsed values.
-- The returned string should be phrased as a logical reasoning question, incorporating the provided input values.
+- Parses the `test_case` string to extract the necessary values and context from the original problem statement for generating a logic problem.
+- Returns a **logic problem** that maintains the core of the original problem statement, including **all background information, problem requirements, and the question**.
+- The returned string should be phrased as a logical reasoning question, clearly referencing the test case and incorporating the original input values.
+- Ensure that **none of the original problem’s information is omitted** when forming the logical question.
 
 ### Requirements:
 1. **Input Format**:
@@ -325,14 +326,20 @@ Your task is to write a Python function `generate_logic_problem(test_case)` that
    - The test case is represented as a string that contains the input in the format specified by the competition. If the problem includes multiple test cases, only one test case will be given in the input string, and the number of test cases will be `1`.
    
 2. **Output Format**:
-   - The function must return a string, which is a logic problem or question related to the parsed values from the test case.
-   - Ask **only one** question based on the original question in the problem statement.
-   - If there is an error in parsing the input (for example, if the test case format is invalid), the function should return an error message indicating the problem with the input.
+   - The function must return a string that is a **logical reasoning question** based on the parsed values and problem context.
+   - The logic question should **maintain all details from the original problem** (e.g., background, constraints, input-output format, examples, etc.).
+   - The output must **ask only one question** that’s logically connected to the problem and its given input. 
+   - The question should directly relate to **what the problem asks**, ensuring **all necessary information** from the problem statement is included.
+   - If there is an error in parsing the input (e.g., format is incorrect), the function should return an error message indicating the problem with the input format.
 
 3. **Assumptions**:
    - The input test case is always valid and provided as a string.
-   - The function handles only one test case per call.
-   - Ensure that the logic problem generated makes sense and is coherent based on the provided input.
+   - The function handles only **one test case per call**.
+   - Ensure that the generated logic problem **remains coherent and complete** based on the provided input.
+
+4. **Important Note**:
+   - In your logic question, **don't omit any essential details** from the original problem statement, including edge cases, background information, and the exact structure of the problem.
+   - The question should not introduce any unnecessary details, but it should **exactly replicate the problem's intent**, ensuring the full understanding of the problem statement is required to answer the question.
 
 ### Example Problem Formats:
 
@@ -349,12 +356,11 @@ Your task is to write a Python function `generate_logic_problem(test_case)` that
 ### Task:
 Write a Python function `generate_logic_problem(test_case: str) -> str` that follows the above guidelines:
 - First, parse the `test_case` string to extract the input values.
-- If parsing is successful, return a logic question based on the extracted values.
+- Use the **complete** context from the problem statement, including all background and constraints, to generate a logical question.
+- If parsing is successful, return a logic question based on the extracted values and the problem’s requirements.
 - If an error occurs during parsing, return an error message indicating the issue.
-- If the original problem statement requires multiple test cases, the test case string will still contain only one test case with the number of test cases indicated as `1`.
+- Ensure that the function’s output maintains **the integrity of the original problem's context** and that the question is logically sound and relevant.
 
-### Output:
-Wrap your Python function in a code block labeled `python`.
 
 **Problem Statement:**
 {problem}
@@ -388,6 +394,17 @@ The input problem statement may include various types of data, such as integers,
 {problem}
 '''
 
+answer_problem_prompt = '''
+{problem}
+Please reason step by step, and put your final answer within \\boxed{{}}.
+'''
+
+def train_prompt(question):
+  system_prompt = "A conversation between User and Assistant. The user asks a question, and the Assistant solves it. The assistant first thinks about the reasoning process in the mind and then provides the user with the answer, and put your final answer within \\boxed{{}} . The reasoning process and answer are enclosed within <think> </think> and <answer> </answer> tags, respectively, i.e., <think> reasoning process here </think> <answer> answer here </answer>." 
+  return [
+    {"content":system_prompt, "role": "system"},
+    {"content": question, "role": "user"}
+  ]
 
 
 if __name__ == "__main__":

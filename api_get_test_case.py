@@ -45,6 +45,9 @@ def main():
     parser.add_argument("--max_rows", type=int, default=None,
                         help="Limit number of rows to load after start_problem_idx (None = all)")
     parser.add_argument("--save_dir", type=str, default="./save")
+    parser.add_argument("--save_name",type=str,default="output_problems.jsonl")
+    parser.add_argument("--save_meta_name",type=str,default="output_problems_meta.json")
+    parser.add_argument("--filter_numerical", action="store_true", default=False, help="Whether only need numerical problems")
     # 推理与并行
     parser.add_argument("--model", type=str, default="gpt-5", help="Model name for batch_get_chat_api")
     parser.add_argument("--n_processes", type=int, default=16, help="Parallel processes for API calls")
@@ -52,7 +55,7 @@ def main():
     parser.add_argument("--timeout", type=int, default=20, help="Per-request timeout (seconds)")
     parser.add_argument("--think", action="store_true", default=False, help="Enable think mode for API (if supported)")
     parser.add_argument("--extract_code", action="store_true", default=False, help="Whether to extract code from dataset")
-
+    parser.add_argument("--check_number", type=int, default=3, help="The number of submissions for check output.")
     # 批次与重试
     parser.add_argument("--batch_size", type=int, default=256, help="Batch size per attempt")
     parser.add_argument("--max_attempts", type=int, default=3, help="Outer retry attempts over remaining problems")
@@ -123,15 +126,14 @@ def main():
             )
 
 
-            success_problems, todo_problems= verify_and_extract_test_case(batch_problems, logger)
+            success_problems, todo_problems= verify_and_extract_test_case(batch_problems, logger,debug=False,check_number=args.check_number,filter_numerical=args.filter_numerical)
 
 
             output_problems.extend(success_problems)
 
             next_attempt_problems.extend(todo_problems)
             
-            save_output_jsonl(output_problems, save_dir_path=save_dir_path,  logger=logger, save_name="output_problems.jsonl",meta_name="output_problems_meta.json")
-
+            save_output_jsonl(output_problems, save_dir_path=save_dir_path,  logger=logger, save_name=args.save_name,meta_name=args.save_meta_name)
             logger.info(f"success={len(output_problems)} | retry_next={len(todo_problems)}")
 
         left_problems = next_attempt_problems

@@ -9,7 +9,7 @@ from pathlib import Path
 from extract import _extract_code_from_row
 from datetime import datetime
 import json
-
+import random
 
 def _drop_heavy_columns(ds, drop_list: list, logger):
     # 根据需要删除超大列
@@ -282,8 +282,13 @@ def save_output_jsonl(
         "policy": {
             "dict_keys_to_dump": list(dict_keys_to_dump),
             "list_of_dict_keys_to_dump": list(list_of_dict_keys_to_dump),
-        },
+        }
     }
+    if len(output_problems)>0:
+        meta['example']=random.choice(output_problems)
+    else:
+        logger.error("No example in output_problems.")
+        
     with out_meta.open("w", encoding="utf-8") as mf:
         json.dump(meta, mf, ensure_ascii=False, indent=2)
 
@@ -299,7 +304,7 @@ from datetime import datetime
 from typing import List, Dict, Any
 
 def save_output_parquet(
-    output_problems: List[Dict[str, Any]],
+    output_problems ,
     save_dir_path: Path,
     logger,
     save_name: str | None = None,
@@ -383,6 +388,12 @@ def save_output_parquet(
             "list_of_dict_keys_to_dump": list(list_of_dict_keys_to_dump),
         },
     }
+    
+    if len(output_problems)>0:
+        meta['example']=random.choice(output_problems)
+    else:
+        logger.error("No example in output_problems.")
+        
     with out_meta.open("w", encoding="utf-8") as mf:
         json.dump(meta, mf, ensure_ascii=False, indent=2)
 

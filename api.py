@@ -9,6 +9,7 @@ from multiprocessing import Pool
 from tqdm import tqdm
 from logger import setup_logger
 from zai import ZhipuAiClient
+MODEL="glm-4.5"
 client = ZhipuAiClient(api_key="")
 
 

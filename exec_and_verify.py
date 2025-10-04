@@ -70,24 +70,12 @@ def fix_newlines_in_cpp_strings(code: str) -> str:
         out.append('\n')
     return ''.join(out)
 
-def _detect_solution_lang(code: str) -> str:
-    """
-    简单启发式：判断参考解是 C++ 还是 Python。
-    返回 'cpp' 或 'python'。默认偏向 C++。
-    """
-    cxx_signals = ["#include", "int main(", "using namespace std", "std::", "cstdio", "iostream"]
-    py_signals = ["def main", "print(", "import ", "sys.stdin", "input()", "from "]
-    if any(s in code for s in cxx_signals):
-        return "cpp"
-    if any(s in code for s in py_signals) and "#include" not in code:
-        return "python"
-    # fallback：大多数平台参考解是 C++
-    return "cpp"
-
 def build_and_run_reference_solution(
     solution_code: str,
     inputs: List[str],
     logger=None,
+    debug=False,
+    lang="cpp",
     *,
     cpp_std: str = "c++17",
     compile_timeout_sec: int = 60,
@@ -96,7 +84,7 @@ def build_and_run_reference_solution(
     """
     编译/准备参考解，并对每个 input 运行获得标准输出。
     支持 C++ (g++) 与 Python（系统 python）。
-    返回 outputs（与 inputs 一一对应；若某个失败则删除）。
+    返回 outputs（与 inputs 一一对应）。
     """
     cwd = Path.cwd()
     src_dir = (cwd / ".." / "testlib").resolve()
@@ -104,9 +92,8 @@ def build_and_run_reference_solution(
     src_dir.mkdir(parents=True, exist_ok=True)
     bin_dir.mkdir(parents=True, exist_ok=True)
 
-    lang = _detect_solution_lang(solution_code)
-    checked_outputs: List[str] = []
-    checked_inputs:List[str] = []
+    
+    checked_list = []
 
     if lang == "cpp":
         sol_cpp = src_dir / "solution.cpp"
@@ -117,23 +104,23 @@ def build_and_run_reference_solution(
         cxx = os.environ.get("CXX", "g++")
         common_flags = ["-std=" + cpp_std, "-O2", "-pipe", "-static-libstdc++", "-static-libgcc"]
 
-        if logger: logger.info("Compiling reference C++ solution...")
+        if logger and debug: logger.info("Compiling reference C++ solution...")
         try:
             subprocess.run(
                 [cxx, str(sol_cpp), "-o", str(sol_bin), *common_flags],
                 check=True, timeout=compile_timeout_sec, capture_output=True
             )
         except subprocess.CalledProcessError as e:
-            if logger:
+            if logger and debug:
                 logger.error("Failed to compile reference solution.")
                 logger.error(e.stderr.decode(errors="ignore"))
             # 编译失败，返回空 outputs（长度与 inputs 对齐）
-            return [""] * len(inputs)
+            return None
         except subprocess.TimeoutExpired:
-            if logger: logger.error("Reference solution compilation timed out.")
-            return [""] * len(inputs)
+            if logger and debug: logger.error("Reference solution compilation timed out.")
+            return None
 
-        for i, inp in enumerate(inputs, 1):
+        for i, inp in enumerate(inputs):
             try:
                 proc = subprocess.run(
                     [str(sol_bin)],
@@ -144,25 +131,44 @@ def build_and_run_reference_solution(
                     capture_output=True
                 )
             except subprocess.TimeoutExpired:
-                if logger: logger.warning(f"[ref #{i}] Solution timed out.")
+                if logger and debug: logger.warning(f"[ref #{i}] Solution timed out.")
+                checked_list.append({
+                    "input":inp,
+                    "output":None,
+                    "flag":False
+                })
                 continue
             except FileNotFoundError:
-                if logger: logger.error("Reference binary missing unexpectedly.")
+                if logger and debug: logger.error("Reference binary missing unexpectedly.")
+                checked_list.append({
+                    "input":inp,
+                    "output":None,
+                    "flag":False
+                })
                 continue
+            
 
             if proc.returncode == 0:
-                checked_inputs.append(inp)
-                checked_outputs.append(proc.stdout)
+                checked_list.append({
+                    "input":inp,
+                    "output":proc.stdout,
+                    "flag":True
+                })
             else:
-                if logger:
+                if logger and debug:
                     logger.warning(f"[ref #{i}] Non-zero exit {proc.returncode}. stderr:\n{proc.stderr}")
+                checked_list.append({
+                    "input":inp,
+                    "output":None,
+                    "flag":False
+                })
 
     else:  # python
         sol_py = bin_dir / "sol.py"
         sol_py.write_text(solution_code, encoding="utf-8")
         python_exe = os.environ.get("PYTHON", "python")
 
-        if logger: logger.info("Prepared reference Python solution.")
+        if logger and debug: logger.info("Prepared reference Python solution.")
         for i, inp in enumerate(inputs, 1):
             try:
                 proc = subprocess.run(
@@ -174,17 +180,35 @@ def build_and_run_reference_solution(
                     capture_output=True
                 )
             except subprocess.TimeoutExpired:
-                if logger: logger.warning(f"[ref #{i}] Python solution timed out.")
+                if logger and debug: logger.warning(f"[ref #{i}] Python solution timed out.")
+                checked_list.append({
+                    "input":inp,
+                    "output":None,
+                    "flag":False
+                })
                 continue
             except FileNotFoundError:
-                if logger: logger.error("Python interpreter not found.")
+                if logger and debug: logger.error("Python interpreter not found.")
+                checked_list.append({
+                    "input":inp,
+                    "output":None,
+                    "flag":False
+                })
                 continue
 
             if proc.returncode == 0:
-                checked_inputs.append(inp)
-                checked_outputs.append(proc.stdout)
+                checked_list.append({
+                    "input":inp,
+                    "output":proc.stdout,
+                    "flag":True
+                })
             else:
-                if logger:
+                if logger and debug:
                     logger.warning(f"[ref #{i}] Non-zero exit {proc.returncode}. stderr:\n{proc.stderr}")
+                checked_list.append({
+                    "input":inp,
+                    "output":None,
+                    "flag":False
+                })
 
-    return checked_inputs,checked_outputs
+    return checked_list
