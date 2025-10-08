@@ -394,6 +394,36 @@ The input problem statement may include various types of data, such as integers,
 {problem}
 '''
 
+generate_generator_prompt = """
+Please write a Python function named `generator()` that generates random, valid test case inputs for an algorithmic problem. The function should randomly generate test cases without receiving any input, and return the generated test case as a string.
+
+The generator function should adhere to the following rules:
+
+1. **Test case structure**: 
+   - For problems with multiple test cases, the number of test cases must be set to 1.
+   - Each test case should satisfy the constraints and requirements of the problem it is designed for.
+   
+2. **Randomized data types**: 
+   - Ensure the generator picks random data types as required by the problem. For example:
+     - In graph problems, the generator should randomly select different graph structures like trees, dense graphs, sparse graphs, etc.
+     - For mathematical problems allowed to output error cases, it should randomly generate valid inputs or edge cases such as out-of-range values or -1 for error cases.
+   
+3. **Constraints on values**: 
+   - All numbers generated must be less than {max_number}, ensuring no number exceeds this threshold.
+
+4. **Output format**: 
+   - The function should return the generated test case in a string format.
+
+**Function signature:**
+```python
+def generator():
+    # Your code here
+```
+**Problem Statement:**
+{problem}
+"""
+
+
 answer_problem_prompt = '''
 {problem}
 Please reason step by step, and put your final answer within \\boxed{{}}.

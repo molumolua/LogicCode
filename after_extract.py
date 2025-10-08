@@ -5,9 +5,10 @@ import copy
 from typing import Tuple, Optional, List, Dict, Any
 import inspect
 import json
-from exec_and_verify import build_and_run_reference_solution
+from exec_and_verify import build_and_run_reference_solution,write_and_build_referenece_solution,run_reference_solution,import_needed_module_for_python,fix_newlines_in_python_strings
 from tqdm import tqdm
 import json
+from pathlib import Path
 
 def exec_and_return_values(code_str: str, var_names: List[str], logger) -> Optional[Dict[str, Any]]:
     """
@@ -154,6 +155,262 @@ def verify_and_extract_test_case(code_list, logger, debug=False,check_number=3,f
             left_problems.append(example)
 
     return success_problems, left_problems
+
+
+def heuristic_estimate_function(input_str,
+                                max_len=500,
+                                max_number=1000,
+                                avg_enable=True,
+                                max_number_bit=18,
+                                standard_deviation_enable=True,
+                                logger=None,
+                                debug =False):
+    invalid_flag = False
+    items = input_str.split()
+    
+    len_score = len(input_str)/max_len
+    
+    if len_score > 1.0:
+        if logger and debug: logger.warning(f"Input length {len(input_str)} exceeds max_len {max_len}.")
+        invalid_flag = True
+    
+    standard_deviation_score = None
+    avg_score = None
+    
+    all_numerical_flag = True
+    numbers= []
+    total_sum = 0.0  # 初始化总和
+    for item in items:
+        try:
+            if len(item)<=max_number_bit:
+                num = float(item)
+                total_sum += num
+                if num > max_number:
+                    if logger and debug: logger.warning(f"Number {num} exceeds max_number {max_number}.")
+                    invalid_flag = True
+                numbers.append(num)
+        except ValueError:
+            all_numerical_flag = False
+            break
+    
+    if invalid_flag:
+        if logger and debug: logger.warning("Input is invalid.")
+        return None
+    
+    if all_numerical_flag and len(items)>0:
+        
+        if avg_enable:
+            avg_sum = total_sum/len(items)
+            avg_score = avg_sum/max_number
+            
+        if standard_deviation_enable:
+            standard_deviation_score = (sum((x - (total_sum/len(items))) ** 2 for x in numbers) / len(items)) ** 0.5 / max_number
+    
+    return {
+        "len_score": len_score,
+        "avg_score": avg_score,
+        "standard_deviation_score": standard_deviation_score
+    }
+
+def sort_scored_test_case_list(test_case_list):
+    len_score_flag = True
+    avg_score_flag = True
+    standard_deviation_flag = True
+    
+    # Check if each score field exists
+    for test_case in test_case_list:
+        if not test_case['difficulty'].get('len_score'):
+            len_score_flag = False
+        if not test_case['difficulty'].get('avg_score'):
+            avg_score_flag = False
+        if not test_case['difficulty'].get('standard_deviation_score'):
+            standard_deviation_flag = False
+    
+    # Define a function to calculate the sum of available scores for each test case
+    def score_sum(test_case):
+        total_score = 0
+        if len_score_flag:
+            total_score += test_case['difficulty'].get('len_score', 0)
+        if avg_score_flag:
+            total_score += test_case['difficulty'].get('avg_score', 0)
+        if standard_deviation_flag:
+            total_score += test_case['difficulty'].get('standard_deviation_score', 0)
+        return total_score
+
+    # Sort the test case list based on the total sum of scores
+    sorted_test_case_list = sorted(test_case_list, key=lambda x: score_sum(x))
+    
+    return sorted_test_case_list
+    
+      
+def verify_and_exec_generator(code_list, logger, debug=False,check_number=3,filter_numerical=True,max_try_num=1000,test_case_num=30,test_case_max_len=500,test_case_max_number=1000.0):
+    _logger = logger
+    success_problems = []
+    left_problems = []
+
+    cwd = Path.cwd()
+    src_dir = (cwd / ".." / "testlib").resolve()
+    bin_dir = (cwd / "testlib").resolve()
+    src_dir.mkdir(parents=True, exist_ok=True)
+    bin_dir.mkdir(parents=True, exist_ok=True)
+    
+    
+    
+    for example in tqdm(code_list, desc="Processing test cases", unit="problem", ncols=100, ascii=True):
+        code, lang = extract_last_code_block(example['answer'])
+        todo_flag = False
+        code = fix_newlines_in_python_strings(import_needed_module_for_python(code)) 
+        # print(code)
+        if lang and lang == "python":
+            try:
+                #过滤获得cpp/py的correct_submissions
+                cpp_py_solution_list = []
+                for solution_item in example['correct_submissions']:
+                    solution_code = solution_item['code']
+                    solution_lang = solution_item['language']
+                    if solution_lang == "cpp" or solution_lang == "python": 
+                        cpp_py_solution_list.append({
+                            "code":solution_code,
+                            "language":solution_lang
+                        })
+                    if len(cpp_py_solution_list)>=check_number:
+                        break
+                    
+                if len(cpp_py_solution_list) <= 1 :
+                    if logger and debug :logger.error("Not enough submission to check test case correctness.")
+                    continue
+                
+                # 把correct_submissions 编译并且存好在规定位置
+                error_write_and_build_flag = False
+                for idx,cpp_py_solution_item in enumerate(cpp_py_solution_list):
+                    solution_code = cpp_py_solution_item['code']
+                    lang = solution_item['language']
+                    if lang == "cpp":
+                        sol_code = src_dir / f"solution_{idx}.cpp"
+                        sol_bin = bin_dir / f"sol_{idx}"
+                    elif lang == "python":  # python
+                        sol_code = bin_dir / f"sol_{idx}.py"
+                        sol_bin = None
+                    
+                    success_flag = write_and_build_referenece_solution(
+                        solution_code_str=solution_code,
+                        lang=lang,
+                        sol_code=sol_code,
+                        sol_bin=sol_bin,
+                        debug=debug,
+                        logger=logger
+                    )
+                    
+                    cpp_py_solution_item['sol_code']=sol_code
+                    cpp_py_solution_item['sol_bin']=sol_bin
+                    
+                    if not success_flag:
+                        error_write_and_build_flag = True
+                        break
+                
+                if error_write_and_build_flag:
+                    # 如果本身的代码有问题，也不用加入todo
+                    if logger and debug :logger.error("Error during write_and_build.")
+                    continue
+                
+                
+                #  执行generator获取input，并且
+                # 1. 通过多组submission检验input的合法性  
+                # 2. 检验是否是一个纯数字问题  
+                # 3. 检测难度是否合格
+                numerical_flag = True
+                final_input_output_item_list = []
+                for _ in range(max_try_num):
+                    # step1：执行generator获取数据
+                    try:
+                        exec(code,globals())
+                        test_case_input = generator()
+                    except Exception as e:
+                        if logger and debug: _logger.error(f"Error in exec generator ! {e} ")
+                        continue
+                    
+                    # step 1.5： 执行难度estimate函数，获取难度是否符合
+                    
+                    difficulty_dict = heuristic_estimate_function(
+                        input_str=test_case_input,
+                        max_len = test_case_max_len,
+                        max_number= test_case_max_number,
+                        max_number_bit=len(str(abs(test_case_max_number))),
+                        logger=logger,
+                        debug=debug
+                    )
+                    if not difficulty_dict:
+                        if logger and debug: logger.error("Difficulty estimate function return None.")
+                        continue
+                    
+                    # step2：跑多组solution，并获取每一组solution的输出
+                    compare_to_check_list = []
+                    error_flag = False
+                    for cpp_py_solution_item in cpp_py_solution_list:
+                        checked_list = run_reference_solution(inputs=[test_case_input],
+                                            sol_code=cpp_py_solution_item['sol_code'],
+                                            sol_bin = cpp_py_solution_item['sol_bin'],
+                                            logger=logger,
+                                            debug=debug,
+                                            lang=cpp_py_solution_item['language'])
+                        if checked_list[0]['flag']==False:
+                            error_flag = True
+                            break
+                        compare_to_check_list.append(checked_list[0]) # {input:xxx,output:xxx,flag:ture/false}
+                    
+                    if error_flag:
+                        continue
+                    
+                    # step3: 检查多组输入是否都一致
+                    for k,checked_list in enumerate(compare_to_check_list[:-1]):
+                        now_submission_output =  checked_list['output']
+                        nxt_submission_output = compare_to_check_list[k+1]['output']
+                        if str(now_submission_output).rstrip("\n") != str(nxt_submission_output).rstrip("\n"):
+                            logger.error("Verifying and find two output not equal.")
+                            error_flag = True
+                            
+                    if error_flag:
+                        continue
+                    
+                    # step4: 如果生成的合法数据不是数值类型的，直接break
+                    if filter_numerical and (not filter_only_numerical_problem([compare_to_check_list[0]])):
+                        numerical_flag = False
+                        break
+                    
+                    final_input_output_item_list.append({
+                        "input":compare_to_check_list[0]['input'],
+                        "output":compare_to_check_list[0]['output'],
+                        "difficulty":difficulty_dict,
+                        })
+                        
+                    if len(final_input_output_item_list)>= test_case_num:
+                        break
+                    
+                if not numerical_flag:
+                    #合法数据的输出不是数值类型，直接continue，也不用再加入todo了
+                    logger.info("Not numerical problem,skip.")
+                    continue
+                
+                
+                if final_input_output_item_list:
+                    todo_flag = True
+        
+                    success_problems.append({
+                        "test_case_list": sort_scored_test_case_list(final_input_output_item_list),
+                        **example
+                    })
+                else:
+                    _logger.error("No test case passed the test.")
+            except Exception as e:
+                _logger.error(f"Error in loading Python Function Generator: {e}")
+        else:
+            _logger.error("No Python code.")
+        
+        if not todo_flag:
+            left_problems.append(example)
+
+    return success_problems, left_problems
+
 
 
 if __name__ == "__main__":

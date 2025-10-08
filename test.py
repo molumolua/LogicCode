@@ -1,49 +1,40 @@
-# # 
+from exec_and_verify import *
+# 用一个简单的测试例子来验证
+code = """
+def generator():
+    import random  # 确保在函数内部导入random
+    n = random.randint(1, 999)
+    max_edges = n * (n - 1) // 2
+    m = random.randint(0, min(999, max_edges))
+    
+    seen_edges = set()
+    edges = []
+    while len(edges) < m:
+        u = random.randint(1, n)
+        v = random.randint(1, n)
+        if u == v:
+            continue
+        edge_canon = (min(u, v), max(u, v))
+        if edge_canon not in seen_edges:
+            seen_edges.add(edge_canon)
+            edges.append((u, v))
+    
+    res = f"{n} {m}"
+    for u, v in edges:
+        res += f"\n{u} {v}"
+    return res
+"""
 
-# generate_test_case_prompt = '''
-# You are given a problem statement from an algorithmic competition. Your task is to generate a list of valid test cases for this problem, in the format of a JSON array. Each element in the array should be an object with a key 'test_case' and the corresponding value should be a string representing a valid input for the problem. The input should follow the problem description, and for problems that involve multiple test cases, each input should be a single test case represented as a string. 
-
-# ### Specific requirements:
-# 1. Each test case should contain a single, valid input that adheres to the problem statement.
-# 2. If the problem involves multiple test cases, the input should include the count of test cases (1) as the first line.
-# 3. The number of tokens in each test case should not exceed 200 tokens.
-# 4. The test cases in the list should be ordered from simplest to most complex.
-  
-# ### Example format for the output (JSON array):
-# ```json
-# [
-#   {{
-#     "test_case": "input1"
-#   }},
-#   {{
-#     "test_case": "input2"
-#   }},
-#   ...
-# ]
-# ```
-# The input problem statement may include various types of data, such as integers, strings, arrays, etc., and you should ensure the test cases conform to these formats.
-
-# **Problem Statement:**
-# {problem}
-# '''
-
-# print(generate_test_case_prompt.format(problem="123"))
-
-import re
-
-def is_valid_number(s: str) -> bool:
-    # 使用正则表达式检查是否是有效的整数或浮点数
-    return bool(re.fullmatch(r'^\s*-?\d+(\.\d+)?\s*$', s.strip()))
+code =  fix_newlines_in_python_strings(import_needed_module_for_python(code)) 
 
 
-print(is_valid_number("1"))        # True
-print(is_valid_number("2 3"))      # False
-print(is_valid_number("23"))       # True
-print(is_valid_number("2\n3"))     # False
-print(is_valid_number("2\n"))      # True
-print(is_valid_number("1 1.23"))     # False
-print(is_valid_number(" 2\n"))       # True
-print(is_valid_number("1."))       # False
-print(is_valid_number("1.23 "))    # True
-print(is_valid_number(" 01.23"))    # False
-print(is_valid_number("-0.23"))     # True
+# print(repr(code))  # 使用 repr() 来显示所有特殊字符
+
+        
+# 确保代码可以执行
+try:
+    exec(code)
+    test_case_input = generator()
+    print(test_case_input)  # 打印生成的测试用例
+except Exception as e:
+    print(f"Error in exec generator ! {e}")
