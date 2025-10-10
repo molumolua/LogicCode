@@ -3,7 +3,14 @@ from typing import Optional, Tuple
 from typing import Any, Dict, List, Optional
 # from process_dataset import load_and_prepare_dataset
 from logger import setup_logger
-
+def show_literal_newlines(s: str) -> str:
+    # 只把真实控制字符替换成可见转义；已存在的 "\n" 文本不受影响
+    return (s
+            .replace('\r\n', '\\r\\n')
+            .replace('\n', '\\n')
+            .replace('\t', '\\t')
+            .replace('\r', '\\r'))
+    
 CANDIDATE_CODE_KEYS = [
     "code", "program", "source_code", "final_code", "solution", "answer", "submission",
 ]

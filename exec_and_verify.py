@@ -372,3 +372,177 @@ import json
 {code_str}
 """
     return wrapped_code
+
+
+import signal
+
+class _Timeout:
+    def __init__(self, seconds: int):
+        self.seconds = seconds
+        self._old_handler = None
+
+    def __enter__(self):
+        # 安装超时处理器
+        try:
+            self._old_handler = signal.getsignal(signal.SIGALRM)
+            signal.signal(signal.SIGALRM, self._raise_timeout)
+            signal.alarm(self.seconds)
+        except Exception:
+            # 这里不抛，让外层 with 捕获；run_generator_with_alarm 会统一处理
+            pass
+        return self
+
+    def __exit__(self, exc_type, exc, tb):
+        # 清理闹钟与恢复旧的 handler
+        try:
+            signal.alarm(0)
+            if self._old_handler is not None:
+                signal.signal(signal.SIGALRM, self._old_handler)
+        except Exception:
+            pass
+        # 返回 False 表示不在此处吞异常；由外层统一 try/except 处理并记录日志
+        return False
+
+    @staticmethod
+    def _raise_timeout(signum, frame):
+        raise TimeoutError("Timeout")
+
+
+def run_generator_with_alarm(code: str, seconds: int = 10, logger=None):
+    """
+    执行用户提供的 code，查找并调用其中的 generator()。
+    任意阶段（编译、exec、调用、超时）一旦出错：logger.error(...) 并返回 None，不向外抛异常。
+    """
+    g = {}
+
+    # 1) 编译
+    try:
+        compiled = compile(code, "<user_code>", "exec")
+    except Exception as e:
+        if logger:
+            logger.error(f"[compile] 用户代码编译失败: {e}", exc_info=True)
+        return None
+
+    # 2) exec 运行用户代码
+    try:
+        # 用同一个 dict 作为 globals/locals，确保函数能访问到同一命名空间里的变量
+        exec(compiled, g, g)
+    except Exception as e:
+        if logger:
+            logger.error(f"[exec] 执行用户代码时出错: {e}", exc_info=True)
+        return None
+
+    # 3) 检查 generator 是否存在且可调用
+    gen = g.get("generator", None)
+    if not callable(gen):
+        if logger:
+            logger.error("generator() 未找到或不可调用。")
+        return None
+
+    # 4) 带超时地调用 generator()
+    try:
+        with _Timeout(seconds):
+            return gen()
+    except TimeoutError:
+        if logger:
+            logger.error(f"[timeout] generator() 超过 {seconds} 秒未完成。")
+        return None
+    except Exception as e:
+        if logger:
+            logger.error(f"[run] 调用 generator() 时出错: {e}", exc_info=True)
+        return None
+    finally:
+        # 双保险：确保闹钟关闭
+        try:
+            signal.alarm(0)
+        except Exception:
+            pass
+
+# pip install requests  (如未安装)
+import requests
+
+def sandboxfusion_run(base_url: str,
+                      code_str: str,
+                      *,
+                      language: str = "python",
+                      stdin: str = "",
+                      args=None,
+                      time_limit: int = 10,
+                      memory_limit_mb: int = 256,
+                      logger=None) -> dict:
+    """
+    调用 SandboxFusion 执行代码（不抛异常）。
+    - base_url: 例如 "http://127.0.0.1:8080"
+    - code_str: 待执行代码的完整字符串
+    - language: 语言标识（示例: "python", "cpp", "js"...）
+    - stdin: 运行时标准输入
+    - args: 传给程序的命令行参数列表
+    - time_limit: 运行时间限制（秒）
+    - memory_limit_mb: 内存上限（MB）
+    - token: 若服务启用鉴权，可传 Bearer Token
+    - logger: 可选 logger，对错误进行 logger.error
+    - endpoint: 具体执行 API 路径，默认 “/api/v1/run”
+    - extra_headers: 附加自定义 header
+
+    返回标准化结果字典：
+    {
+      "ok": True/False,
+      "exit_code": int | None,
+      "stdout": str,
+      "stderr": str,
+      "time_ms": int | None,
+      "status": int | None,   # HTTP 状态码(出错时)
+      "error": str | None,    # 出错信息
+      "meta": dict            # 其余原始字段
+    }
+    """
+    url = base_url
+    payload = {
+        "language": language,
+        "code": code_str,
+        "stdin": stdin,
+        "args": args or [],
+        "limits": {"time": time_limit, "memory_mb": memory_limit_mb},
+        # 如果 SandboxFusion 需要挂载文件，可扩展：
+        # "files": [{"path": "main.py", "content": code_str}]
+    }
+
+    headers = {"Content-Type": "application/json"}
+
+    # 1) HTTP 请求阶段
+    try:
+        resp = requests.post(url, json=payload,timeout=time_limit + 5)
+        status = resp.status_code
+    except Exception as e:
+        msg = f"[SandboxFusion] HTTP request failed: {e}"
+        if logger:
+            logger.error(msg)
+        return {"ok": False, "error": str(e), "stage": "http", "status": None,
+                "exit_code": None, "stdout": "", "stderr": "" , "time_ms": None, "meta": {}}
+
+    # 2) 解析响应
+    try:
+        data = resp.json()
+    except Exception:
+        data = {"raw": resp.text}
+    run_result = data.get("run_result",{})
+    # 3) 非 200 直接判失败
+    if status != 200:
+        err_msg = (run_result.get("status") if isinstance(data, dict) else resp.text) or f"HTTP {status}"
+        if logger:
+            logger.error(f"[SandboxFusion] status={status} error={err_msg}")
+        return {"ok": False,**data}
+
+    # 4) 标准化成功/失败
+    
+    exit_code = run_result.get("return_code", -1)
+    ok = bool(data.get("ok", exit_code == 0))
+    result = {
+        "ok": ok,
+        **data
+    }
+
+    if not result["ok"] and logger:
+        logger.error(f"[SandboxFusion] run failed: exit_code={exit_code} ")
+
+    return result

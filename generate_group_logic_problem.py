@@ -12,9 +12,10 @@ from typing import Any, Dict, List, Optional
 from prompt import answer_problem_prompt,train_prompt
 from logger import setup_logger
 from process_dataset import load_and_prepare_dataset,prepare_examples,save_output_parquet
-from extract import extract_last_code_block,split_with_input_section,safe_format_template
+from extract import show_literal_newlines
 from after_extract import verify_and_extract_test_case
 import copy
+from exec_and_verify import sandboxfusion_run
 from tqdm import tqdm
 
 
@@ -44,7 +45,7 @@ def main():
     parser.add_argument("--save_meta_name",type=str,default="output_problems_meta.json")
 
     parser.add_argument("--extract_code", action="store_true", default=False, help="Whether to extract code from dataset")
-
+    parser.add_argument("--sandbox_url",type=str,default=None,help="The sandboxfusion url for code execution.")
     args = parser.parse_args()
 
     logger = setup_logger()
@@ -77,27 +78,65 @@ def main():
     group_problem_list = []
     for example in tqdm(examples):
         generate_logic_problem_function = example['generate_logic_problem']['raw_code']
-        try:
-            exec(generate_logic_problem_function, globals()) 
-        except Exception as e:
-            logger.error(f"Error in exec generate_logic_problem function.{e}")
-            continue
         group_problems = []
-        for idx,test_case in enumerate(example['test_case_list']):
+        
+        if args.sandbox_url:
+            for idx,test_case in enumerate(example['test_case_list']):
+                try:
+                    literal_input = show_literal_newlines(test_case['input'])
+                    sandbox_generate_logic_problem_function = generate_logic_problem_function + f'''
+if __name__ == "__main__":
+    print(generate_logic_problem("{literal_input}"))
+'''
+                    # print(sandbox_generate_logic_problem_function)
+                    ret = sandboxfusion_run(args.sandbox_url, sandbox_generate_logic_problem_function, logger=logger,
+                                    language='python', stdin="")
+                    
+                    if ret["ok"]:
+                        logic_problem = ret['run_result']["stdout"]
+                    else:
+                        logger.error(f"Error in sandboxfusion_run for test case {test_case},{ret}")
+                        continue
+                    
+                    if logic_problem.startswith("None"):
+                        logger.error("Error logic_problem is None.")
+                    else:
+                        group_problems.append({
+                            "problem":logic_problem,
+                            "reward_model":{
+                                "ground_truth":f"\\boxed{{{test_case['output']}}}"
+                            },
+                            "source":f"logic_{example['source']}",
+                            "id":f"{example['id']}_{idx}",
+                            "raw_id":example['id'],
+                            "title":f"{example['title']}_{idx}"
+                        })
+                        
+                except Exception as e:
+                    logger.error(f"Error in generate logic problem for test case {test_case},{e}") 
+            
+        else:
             try:
-                logic_problem = generate_logic_problem(test_case['input'])
-                group_problems.append({
-                    "problem":logic_problem,
-                    "reward_model":{
-                        "ground_truth":f"\\boxed{{{test_case['output']}}}"
-                    },
-                    "source":f"logic_{example['source']}",
-                    "id":f"{example['id']}_{idx}",
-                    "raw_id":example['id'],
-                    "title":f"{example['title']}_{idx}"
-                })
+                exec(generate_logic_problem_function, globals()) 
             except Exception as e:
-                logger.error(f"Error in generate logic problem for test case {test_case},{e}")
+                logger.error(f"Error in exec generate_logic_problem function.{e}")
+                continue
+            for idx,test_case in enumerate(example['test_case_list']):
+                try:
+                    logic_problem = generate_logic_problem(test_case['input'])
+                    if logic_problem:
+                        group_problems.append({
+                            "problem":logic_problem,
+                            "reward_model":{
+                                "ground_truth":f"\\boxed{{{test_case['output']}}}"
+                            },
+                            "source":f"logic_{example['source']}",
+                            "id":f"{example['id']}_{idx}",
+                            "raw_id":example['id'],
+                            "title":f"{example['title']}_{idx}"
+                        })
+                except Exception as e:
+                    logger.error(f"Error in generate logic problem for test case {test_case},{e}")
                 
         if len(group_problems)>0:
             group_problem_list.append(group_problems)

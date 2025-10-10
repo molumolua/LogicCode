@@ -311,60 +311,61 @@ Return **only** one fenced code block:
 
 
 generate_logic_problem_prompt = """
-You are given a problem statement from an algorithmic competition, which includes a valid test case. 
+You are given a problem statement from an algorithmic competition. 
 Your task is to write a Python function `generate_logic_problem(test_case)` that:
 
 - Takes a single test case as input, where `test_case` is a string representing the actual input for the problem.
-- Parses the `test_case` string to extract the necessary values and context from the original problem statement for generating a logic problem.
-- Returns a **logic problem** that maintains the core of the original problem statement, including **all background information, problem requirements, and the question**.
-- The returned string should be phrased as a logical reasoning question, clearly referencing the test case and incorporating the original input values.
-- Ensure that **none of the original problem’s information is omitted** when forming the logical question.
+- Parses the `test_case` string to extract the necessary values and context from the original problem statement.
+- Returns a **logic problem** that focuses on the core of the original problem statement, including **key requirements, constraints**, and the **question** that needs to be answered.
+- The returned string should be phrased as a **logical reasoning question**, clearly referencing the test case and incorporating the original input values.
 
 ### Requirements:
 1. **Input Format**:
    - The function will receive one valid test case as a string.
-   - The test case is represented as a string that contains the input in the format specified by the competition. If the problem includes multiple test cases, only one test case will be given in the input string, and the number of test cases will be `1`.
-   
+   - The test case is represented as a string containing the input in the format specified by the competition. If there are multiple test cases, only one test case will be given in the input string.
+
 2. **Output Format**:
-   - The function must return a string that is a **logical reasoning question** based on the parsed values and problem context.
-   - The logic question should **maintain all details from the original problem** (e.g., background, constraints, input-output format, examples, etc.).
-   - The output must **ask only one question** that’s logically connected to the problem and its given input. 
-   - The question should directly relate to **what the problem asks**, ensuring **all necessary information** from the problem statement is included.
-   - If there is an error in parsing the input (e.g., format is incorrect), the function should return an error message indicating the problem with the input format.
+   - The function must return a **logical reasoning question** based on the parsed values and problem context.
+   - The question should include **key details** necessary for solving the problem.
+   - The question should focus on the **core logic of the problem** and **must directly lead to the same correct solution** as the original problem’s solution would if the problem were solved using standard methods.
 
 3. **Assumptions**:
    - The input test case is always valid and provided as a string.
    - The function handles only **one test case per call**.
-   - Ensure that the generated logic problem **remains coherent and complete** based on the provided input.
+   - The question generated must ensure that when the test case is solved using the correct approach, the answer matches the expected output.
 
-4. **Important Note**:
-   - In your logic question, **don't omit any essential details** from the original problem statement, including edge cases, background information, and the exact structure of the problem.
-   - The question should not introduce any unnecessary details, but it should **exactly replicate the problem's intent**, ensuring the full understanding of the problem statement is required to answer the question.
+4. **Important Notes**:
+   - You **do not need to include code-specific details**, such as example code, or instructions about how the algorithm is implemented.
+   - **Focus only on what is logically needed** to answer the question and ensure that the question leads to the **same answer** that would be found by solving the original problem using correct methods.
+   - The question must be **coherent** and **relevant** to the provided input and **remain logically consistent** with the problem’s constraints.
 
 ### Example Problem Formats:
 
 #### Example 1: Simple Sum
-- **Problem Statement**: Given a problem that requires summing an array of integers.
+- **Problem Statement**: Given an array of integers, return the sum.
 - **Test Case**: `"3\n1 2 3"`
 - **Logic Question**: "What is the sum of the integers in the array [1, 2, 3]?"
+- **Expected Answer**: 6
 
 #### Example 2: Multiple Test Cases
-- **Problem Statement**: Given a problem that requires summing an array of integers. The input contains multiple test cases.
+- **Problem Statement**: Given an array of integers, return the sum for each test case.
 - **Test Case**: `"1\n3\n1 2 3"`
 - **Logic Question**: "What is the sum of the integers in the array [1, 2, 3]?"
+- **Expected Answer**: 6
 
 ### Task:
 Write a Python function `generate_logic_problem(test_case: str) -> str` that follows the above guidelines:
-- First, parse the `test_case` string to extract the input values.
-- Use the **complete** context from the problem statement, including all background and constraints, to generate a logical question.
-- If parsing is successful, return a logic question based on the extracted values and the problem’s requirements.
-- If an error occurs during parsing, return an error message indicating the issue.
-- Ensure that the function’s output maintains **the integrity of the original problem's context** and that the question is logically sound and relevant.
-
+- Parse the `test_case` string to extract the input values.
+- Use the **necessary context** from the problem statement, including **key requirements and constraints**, to generate a clear and logical question.
+- Ensure that the logic question **leads to the same correct solution** as solving the original problem.
+- If parsing is successful, return a **relevant and coherent** logic question based on the extracted values.
+- If an error occurs during parsing, return None.
+- Ensure the question is directly tied to the **logical reasoning** needed to solve the problem and guarantees the **correct answer**.
 
 **Problem Statement:**
 {problem}
 """
+
 
 
 generate_test_case_prompt = '''
@@ -395,26 +396,26 @@ The input problem statement may include various types of data, such as integers,
 '''
 
 generate_generator_prompt = """
-Please write a Python function named `generator()` that generates random, valid test case inputs for an algorithmic problem. The function should randomly generate test cases without receiving any input, and return the generated test case as a string.
+Please write a Python function named `generator()` that generates random, valid test case inputs for an algorithmic problem. The function should generate valid test cases, ensuring that the generated input strictly adheres to the problem's constraints and requirements.
 
-The generator function should adhere to the following rules:
+The generator function should follow these guidelines:
 
-1. **Test case structure**: 
-   - For problems with multiple test cases, the number of test cases must be set to 1.
-   - Each test case should satisfy the constraints and requirements of the problem it is designed for.
+1. **Test Case Structure**: 
+   - For problems with multiple test cases, the number of test cases must be 1.
+   - Each test case must be valid and satisfy the exact constraints specified in the problem.
+
+2. **Randomized Data Types**: 
+   - Ensure the generator selects appropriate random data types based on the problem.
+     - For graph problems, the generator should randomly select different graph structures, such as trees, dense graphs, sparse graphs, etc.
+     - For mathematical problems, the generator should create valid inputs, including edge cases (e.g., out-of-range values or -1 for error cases).
    
-2. **Randomized data types**: 
-   - Ensure the generator picks random data types as required by the problem. For example:
-     - In graph problems, the generator should randomly select different graph structures like trees, dense graphs, sparse graphs, etc.
-     - For mathematical problems allowed to output error cases, it should randomly generate valid inputs or edge cases such as out-of-range values or -1 for error cases.
-   
-3. **Constraints on values**: 
-   - All numbers generated must be less than {max_number}, ensuring no number exceeds this threshold.
+3. **Constraints on Values**: 
+   - Ensure that all numeric values generated are less than {max_number}. No number should exceed this threshold.
 
-4. **Output format**: 
-   - The function should return the generated test case in a string format.
+4. **Output Format**: 
+   - The function should return the generated test case as a string, formatted correctly.
 
-**Function signature:**
+**Function Signature:**
 ```python
 def generator():
     # Your code here

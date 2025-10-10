@@ -52,7 +52,8 @@ def main():
     parser.add_argument("--max_len", type=int, default=500, help="The maximum len allowed in the test case.")
     parser.add_argument("--num_of_test_case", type=int, default=30, help="The number of test cases to be generated.")
     parser.add_argument("--max_try_of_test_case", type=int, default=1000, help="The maximum trials to generate enough test cases.")
-    
+    parser.add_argument("--sandbox_url",type=str,default=None,help="The sandboxfusion url for code execution.")
+    parser.add_argument("--error_cnt_limit",type=int,default=100,help="The error count limit to stop trying.")
     # 批次与重试
     parser.add_argument("--batch_size", type=int, default=256, help="Batch size per attempt")
     parser.add_argument("--max_attempts", type=int, default=3, help="Outer retry attempts over remaining problems")
@@ -128,7 +129,9 @@ def main():
                                                                        test_case_max_number=args.max_number,
                                                                        max_try_num=args.max_try_of_test_case,
                                                                        check_number=args.check_number,
-                                                                       filter_numerical=args.filter_numerical)
+                                                                       filter_numerical=args.filter_numerical,
+                                                                       sandboxfusion_url=args.sandbox_url,
+                                                                       error_cnt_limit=args.error_cnt_limit)
 
             output_problems.extend(success_problems)
 
