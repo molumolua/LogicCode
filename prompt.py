@@ -430,8 +430,17 @@ answer_problem_prompt = '''
 Please reason step by step, and put your final answer within \\boxed{{}}.
 '''
 
-def train_prompt(question):
+def train_prompt(question,choices=None):
   system_prompt = "A conversation between User and Assistant. The user asks a question, and the Assistant solves it. The assistant first thinks about the reasoning process in the mind and then provides the user with the answer, and put your final answer within \\boxed{{}} . The reasoning process and answer are enclosed within <think> </think> and <answer> </answer> tags, respectively, i.e., <think> reasoning process here </think> <answer> answer here </answer>." 
+  if choices: question = question + "\n" + choices
+  return [
+    {"content":system_prompt, "role": "system"},
+    {"content": question, "role": "user"}
+  ]
+
+def no_think_prompt(question,choices=None):
+  system_prompt = "You are Qwen, created by Alibaba Cloud. You are a helpful assistant." 
+  if choices: question = question + "\n" + choices
   return [
     {"content":system_prompt, "role": "system"},
     {"content": question, "role": "user"}

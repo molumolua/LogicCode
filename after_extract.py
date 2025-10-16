@@ -50,12 +50,12 @@ def verify_logic_problem_generation(default_problems,logger):
                 success_flag=True
                 # print(function_code)
                 success_problems.append({
+                    **example,
                     "generate_logic_problem":{
                         "raw_code":code,
                         "lang":lang,
                         "function":function_code
-                    },
-                    **example
+                    }
                 })
                 
         if not success_flag:
@@ -140,9 +140,9 @@ def verify_and_extract_test_case(code_list, logger, debug=False,check_number=3,f
                         continue
                     
                     success_problems.append({
+                        **example,
                         "raw_input_list": json_input_list,
-                        "test_case_list": correct_test_cases,
-                        **example
+                        "test_case_list": correct_test_cases
                     })
                 else:
                     _logger.error("No test case passed the test.")
@@ -333,7 +333,12 @@ def verify_and_exec_generator(code_list, logger, debug=False,check_number=3,filt
                 # 3. 检测难度是否合格
                 numerical_flag = True
                 final_input_output_item_list = []
-                for _ in range(max_try_num):
+                bar = tqdm(range(max_try_num), dynamic_ncols=True)
+                for _ in bar:
+                    ok = len(final_input_output_item_list)
+                    bar.set_description(f"Get {ok}/{test_case_num}")
+                    bar.set_postfix(errors=error_cnt,  refresh=True)
+                    
                     if error_cnt >= error_cnt_limit:
                         logger.error(f"Too many continuous errors exceed {error_cnt_limit}, skip this problem.")
                         # 连续错误过多，直接跳过，如果之前都没有正确样本在final_input_output_item_list中
@@ -437,9 +442,10 @@ if __name__ == "__main__":
                     todo_flag = True
                     test_case_list = sort_and_deduplicate_test_case_list(final_input_output_item_list)
                     success_problems.append({
+                        **example,
+                        "generator_code":code,
                         "test_case_list": test_case_list,
                         "test_case_len": len(test_case_list),
-                        **example
                     })
                 else:
                     _logger.error("No test case passed the test.")

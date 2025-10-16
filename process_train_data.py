@@ -13,6 +13,7 @@ import pandas as pd
 from prompt import train_prompt
 from logger import setup_logger
 from process_dataset import load_and_prepare_dataset,prepare_examples,save_output_parquet
+# from process_token_len import filter_examples_by_token_budget
 from extract import extract_last_code_block,split_with_input_section,safe_format_template
 from after_extract import verify_and_extract_test_case
 import copy
@@ -45,7 +46,10 @@ def main():
     parser.add_argument("--save_meta_name",type=str,default="output_problems_meta.json")
 
     parser.add_argument("--extract_code", action="store_true", default=False, help="Whether to extract code from dataset")
-
+    
+    parser.add_argument("--max_tokens", type=int,default=1024, help="max token for train")
+    parser.add_argument("--train_model_path", type=str, default="/inspire/hdd/global_public/public_models/Qwen/Qwen2.5-7B", help="Whether to extract code from dataset")
+    parser.add_argument("--example_level",type=int,default="1",help="1 means array of item , 2 means array of array of item")
     args = parser.parse_args()
 
     logger = setup_logger()
@@ -74,23 +78,59 @@ def main():
     if not examples:
         logger.info("No examples with usable code. Exit.")
         return
-    
     output_train_data_list = []
-    for idx,example in tqdm(enumerate(examples)):
-        if example['problem'].startswith("Error"):
-            continue
-        output_train_data_list.append({
-            'prompt': train_prompt(example['problem']),
-            'reward_model':{
-                "ground_truth":example['reward_model.ground_truth']
-            },
-            "data_source": example['source'],
-            "extra_info":{"index": idx},
-        })
+    code_example_len = None
+    if args.example_level == 1:
+        raw_id_set = set()
+        for idx,example in tqdm(enumerate(examples)):
+            raw_id_set.add(example['raw_id'])
+            output_train_data_list.append({
+                'prompt': train_prompt(example['problem']),
+                'reward_model':{
+                    "ground_truth":example['reward_model.ground_truth']
+                },
+                "data_source": example['source'],
+                "extra_info":{"index": idx,"raw_id":example['raw_id']},
+            })
+        code_example_len = len(raw_id_set)
+    elif args.example_level == 2:
+        code_example_len = len(examples)
+        for example_list in examples:
+            for idx,example in tqdm(enumerate(example_list.values())):
+                if example:
+                # print("hhh",example)
+                    output_train_data_list.append({
+                        'prompt': train_prompt(example['problem']),
+                        'reward_model':{
+                            "ground_truth":example['reward_model.ground_truth']
+                        },
+                        "data_source": example['source'],
+                        "extra_info":{"index": idx,"raw_id":example['raw_id']},
+                    })
+            
+    #output_train_data_list = filter_examples_by_token_budget(output_train_data_list,model_path=args.train_model_path,max_token=args.max_tokens,logger=logger)
+    
+    logger.info(f"Filter token len <= {args.max_tokens}, left output train data list {len(output_train_data_list)}.")
+    logger.info(f"Total:{len(output_train_data_list)}, Get Example:{code_example_len}, Avg logic problem from example:{len(output_train_data_list)/code_example_len}")
     processed_df = pd.DataFrame(output_train_data_list)
     processed_df.to_parquet(Path(str(save_dir_path)+"/"+args.save_name))
     
-    #save_output_parquet(output_train_data_list,save_dir_path,logger,args.save_name,args.save_meta_name)
+        
+    ts = datetime.now().strftime("%Y%m%d-%H%M%S")
+    out_meta = save_dir_path / (args.save_meta_name or "meta.json")
 
+
+    # Write meta
+    meta = {
+        "timestamp": ts,
+        "code_len":code_example_len,
+        "total":len(output_train_data_list)
+    }
+    
+    with out_meta.open("w", encoding="utf-8") as mf:
+        json.dump(meta, mf, ensure_ascii=False, indent=2)
+        
+        
+        
 if __name__ == "__main__":
     main()

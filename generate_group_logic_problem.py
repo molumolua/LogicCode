@@ -16,7 +16,7 @@ from extract import show_literal_newlines
 from after_extract import verify_and_extract_test_case
 import copy
 from exec_and_verify import sandboxfusion_run
-from tqdm import tqdm
+from tqdm.auto import tqdm
 
 
 
@@ -76,72 +76,114 @@ def main():
         return
     
     group_problem_list = []
-    for example in tqdm(examples):
+
+    # 统一的进度条样式（可按需调整）
+    BAR_FMT = "{l_bar}{bar}| {n_fmt}/{total_fmt} [{elapsed}<{remaining}, {rate_fmt}{postfix}]"
+
+    examples_bar = tqdm(
+        examples,
+        desc="Examples",
+        unit="ex",
+        position=0,
+        leave=True,
+        ncols=110,
+        colour="cyan",
+        bar_format=BAR_FMT,
+    )
+
+    for example in examples_bar:
         generate_logic_problem_function = example['generate_logic_problem']['raw_code']
         group_problems = []
-        
-        if args.sandbox_url:
-            for idx,test_case in enumerate(example['test_case_list']):
-                try:
+        success_cnt = 0
+        error_cnt = 0
+
+        # 内层进度条（每个 example 一条）
+        tc_total = len(example['test_case_list'])
+        inner_desc = f"TC | {example.get('id', '')} · {example.get('title', '')}"
+        tc_bar = tqdm(
+            total=tc_total,
+            desc=inner_desc[:80],  # 避免标题过长撑爆
+            unit="tc",
+            position=1,
+            leave=False,
+            ncols=110,
+            colour="green",
+            bar_format=BAR_FMT,
+        )
+
+        # 如果本地执行，需要提前 exec 一次函数定义
+        if not args.sandbox_url:
+            try:
+                exec(generate_logic_problem_function, globals())
+            except Exception as e:
+                logger.error(f"Error in exec generate_logic_problem function. {e}")
+                tc_bar.close()
+                # 继续到下一个 example
+                continue
+
+        for idx, test_case in enumerate(example['test_case_list']):
+            try:
+                if args.sandbox_url:
                     literal_input = show_literal_newlines(test_case['input'])
                     sandbox_generate_logic_problem_function = generate_logic_problem_function + f'''
 if __name__ == "__main__":
     print(generate_logic_problem("{literal_input}"))
 '''
-                    # print(sandbox_generate_logic_problem_function)
-                    ret = sandboxfusion_run(args.sandbox_url, sandbox_generate_logic_problem_function, logger=logger,
-                                    language='python', stdin="")
-                    
+                    ret = sandboxfusion_run(
+                        args.sandbox_url,
+                        sandbox_generate_logic_problem_function,
+                        logger=logger,
+                        language='python',
+                        stdin=""
+                    )
                     if ret["ok"]:
                         logic_problem = ret['run_result']["stdout"]
                     else:
-                        logger.error(f"Error in sandboxfusion_run for test case {test_case},{ret}")
+                        logger.error(f"Sandbox error for test case {test_case}, {ret}")
+                        error_cnt += 1
+                        tc_bar.set_postfix_str(f"ok={success_cnt} err={error_cnt}")
+                        tc_bar.update(1)
                         continue
-                    
-                    if logic_problem.startswith("None"):
-                        logger.error("Error logic_problem is None.")
-                    else:
-                        group_problems.append({
-                            "problem":logic_problem,
-                            "reward_model":{
-                                "ground_truth":f"\\boxed{{{test_case['output']}}}"
-                            },
-                            "source":f"logic_{example['source']}",
-                            "id":f"{example['id']}_{idx}",
-                            "raw_id":example['id'],
-                            "title":f"{example['title']}_{idx}"
-                        })
-                        
-                except Exception as e:
-                    logger.error(f"Error in generate logic problem for test case {test_case},{e}") 
-            
-        else:
-            try:
-                exec(generate_logic_problem_function, globals()) 
-            except Exception as e:
-                logger.error(f"Error in exec generate_logic_problem function.{e}")
-                continue
-            for idx,test_case in enumerate(example['test_case_list']):
-                try:
+                else:
                     logic_problem = generate_logic_problem(test_case['input'])
-                    if logic_problem:
-                        group_problems.append({
-                            "problem":logic_problem,
-                            "reward_model":{
-                                "ground_truth":f"\\boxed{{{test_case['output']}}}"
-                            },
-                            "source":f"logic_{example['source']}",
-                            "id":f"{example['id']}_{idx}",
-                            "raw_id":example['id'],
-                            "title":f"{example['title']}_{idx}"
-                        })
-                except Exception as e:
-                    logger.error(f"Error in generate logic problem for test case {test_case},{e}")
-                
-        if len(group_problems)>0:
+
+                if not logic_problem or str(logic_problem).startswith("None"):
+                    logger.error("Error logic_problem is None/empty.")
+                    error_cnt += 1
+                    tc_bar.set_postfix_str(f"ok={success_cnt} err={error_cnt}")
+                    tc_bar.update(1)
+                    continue
+
+                # 成功生成
+                group_problems.append({
+                    "problem": logic_problem,
+                    "reward_model": {
+                        "ground_truth": f"\\boxed{{{test_case['output']}}}"
+                    },
+                    "source": f"logic_{example['source']}",
+                    "id": f"{example['id']}_{idx}",
+                    "raw_id": example['id'],
+                    "title": f"{example['title']}_{idx}"
+                })
+                success_cnt += 1
+
+            except Exception as e:
+                logger.error(f"Error in generate logic problem for test case {test_case}, {e}")
+                error_cnt += 1
+
+            # 更新内层进度条状态
+            tc_bar.set_postfix_str(f"ok={success_cnt} err={error_cnt}")
+            tc_bar.update(1)
+
+        tc_bar.close()
+
+        # 外层条也展示一下当前 example 的累计情况
+        examples_bar.set_postfix_str(f"last_ok={success_cnt} last_err={error_cnt}")
+
+        if len(group_problems) > 0:
             group_problem_list.append(group_problems)
-            
-    save_output_parquet(group_problem_list,save_dir_path,logger,args.save_name,args.save_meta_name)
+
+    save_output_parquet(group_problem_list, save_dir_path, logger, args.save_name, args.save_meta_name)
 
 if __name__ == "__main__":
     main()

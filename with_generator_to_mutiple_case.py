@@ -15,13 +15,6 @@ from extract import extract_last_code_block, split_with_input_section, safe_form
 from after_extract import verify_and_exec_generator
 import copy
 
-# ---------- main ----------
-
-def pre_fun(example, max_number):
-    return generate_generator_prompt.format(problem=example['description'], max_number=max_number)
-
-def post_fun(example, reply):
-    example["answer"] = reply
 
 def main():
     parser = argparse.ArgumentParser(description="Batch prompting on local Parquet (CodeContests-like)")
@@ -39,11 +32,6 @@ def main():
     parser.add_argument("--save_meta_name", type=str, default="output_problems_meta.json")
     
     # 推理与并行
-    parser.add_argument("--model", type=str, default="gpt-5", help="Model name for batch_get_chat_api")
-    parser.add_argument("--n_processes", type=int, default=16, help="Parallel processes for API calls")
-    parser.add_argument("--temperature", type=float, default=1, help="Sampling temperature")
-    parser.add_argument("--timeout", type=int, default=20, help="Per-request timeout (seconds)")
-    parser.add_argument("--think", action="store_true", default=False, help="Enable think mode for API (if supported)")
     parser.add_argument("--extract_code", action="store_true", default=False, help="Whether to extract code from dataset")
     
     parser.add_argument("--filter_numerical", action="store_true", default=False, help="Whether only need numerical problems")
@@ -88,66 +76,25 @@ def main():
         logger.info("No examples with usable code. Exit.")
         return
 
-    output_problems: List[Dict[str, Any]] = []
-    left_problems = examples[:]       # list
-    next_attempt_problems: List[Dict[str, Any]] = []
 
-    for attempt in range(1, args.max_attempts + 1):
-        total_problems = len(left_problems)
-        if total_problems == 0:
-            logger.info("No remaining problems. Stopping.")
-            break
 
-        total_batches = math.ceil(total_problems / args.batch_size)
-        logger.info(f"Attempt {attempt}/{args.max_attempts} | remaining={total_problems} | batches={total_batches}")
-        # 数据集可能太大了，例如 10w   --- > 16 
-        # 所以，我就先把 10w 个 --- > N组 256 
-        # 256 里面有一些成功的 ok，失败的，加入下一轮 attempt
-        # 第一轮结束，先存这256   第二轮结束，就存512
-        for b in range(total_batches):
-            b_start = b * args.batch_size
-            b_end = min((b + 1) * args.batch_size, total_problems)
-            batch_problems = left_problems[b_start:b_end]
 
-            logger.info(f"  Batch {b+1}/{total_batches} | size={len(batch_problems)}")
+    success_problems, todo_problems = verify_and_exec_generator(examples, 
+                                                                logger,
+                                                                debug=True,
+                                                                test_case_num=args.num_of_test_case,
+                                                                test_case_max_len=args.max_len,
+                                                                test_case_max_number=args.max_number,
+                                                                max_try_num=args.max_try_of_test_case,
+                                                                check_number=args.check_number,
+                                                                filter_numerical=args.filter_numerical,
+                                                                sandboxfusion_url=args.sandbox_url,
+                                                                error_cnt_limit=args.error_cnt_limit)
 
-            batch_get_chat_api(
-                examples=batch_problems,
-                eng=args.model,
-                pre_fun=lambda example: pre_fun(example, args.max_number),  # Pass max_number to pre_fun
-                post_fun=post_fun,
-                logger=logger,
-                n_processes=args.n_processes,
-                temperature=args.temperature,
-                timeout=args.timeout,
-                max_try=args.inner_max_try,
-                think=args.think,
-            )
-
-            success_problems, todo_problems = verify_and_exec_generator(batch_problems, 
-                                                                       logger,
-                                                                       debug=True,
-                                                                       test_case_num=args.num_of_test_case,
-                                                                       test_case_max_len=args.max_len,
-                                                                       test_case_max_number=args.max_number,
-                                                                       max_try_num=args.max_try_of_test_case,
-                                                                       check_number=args.check_number,
-                                                                       filter_numerical=args.filter_numerical,
-                                                                       sandboxfusion_url=args.sandbox_url,
-                                                                       error_cnt_limit=args.error_cnt_limit)
-
-            output_problems.extend(success_problems)
-
-            next_attempt_problems.extend(todo_problems)
             
-            save_output_jsonl(output_problems, save_dir_path=save_dir_path,  logger=logger, save_name=args.save_name, meta_name=args.save_meta_name)
-            logger.info(f"success={len(output_problems)} | retry_next={len(todo_problems)}")
-
-        left_problems = next_attempt_problems
-        next_attempt_problems = []
-        logger.info(f"End of Attempt {attempt}: accumulated={len(output_problems)} | remaining={len(left_problems)}")
-
-    logger.info(f"Done. total_completed={len(output_problems)} | total_input={len(examples)}")
+    save_output_jsonl(success_problems, save_dir_path=save_dir_path,  logger=logger, save_name=args.save_name, meta_name=args.save_meta_name)
+            
+    logger.info(f"Done. total_completed={len(success_problems)} | total_input={len(examples)}")
 
 if __name__ == "__main__":
     main()

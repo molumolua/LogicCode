@@ -147,19 +147,19 @@ def load_and_prepare_dataset(
     ds = load_dataset(load_type, data_files=data_files, split="train")
     logger.info(f"Columns: {ds.column_names}")
 
-    ds = _drop_heavy_columns(ds, drop_list=drop_list, logger=logger)
-    # 关键：恢复并删除 *_json 影子字段，只保留 default_scale / small_scales / large_scales
-    ds = ds.map(
-        restore_scales_map_fn,
-        fn_kwargs=dict(
-            dict_keys=("default_scale",),
-            list_dict_keys=("small_scales", "large_scales"),
-            drop_json_shadow=True,   # ← 打开
-            json_suffix="_json",
-        ),
-        desc="Restoring *_json scales → dict/list[dict] (and dropping shadows)",
-        load_from_cache_file=False  # ← 强制不走缓存
-    )
+    # ds = _drop_heavy_columns(ds, drop_list=drop_list, logger=logger)
+    # # 关键：恢复并删除 *_json 影子字段，只保留 default_scale / small_scales / large_scales
+    # ds = ds.map(
+    #     restore_scales_map_fn,
+    #     fn_kwargs=dict(
+    #         dict_keys=("default_scale",),
+    #         list_dict_keys=("small_scales", "large_scales"),
+    #         drop_json_shadow=True,   # ← 打开
+    #         json_suffix="_json",
+    #     ),
+    #     desc="Restoring *_json scales → dict/list[dict] (and dropping shadows)",
+    #     load_from_cache_file=False  # ← 强制不走缓存
+    # )
 
     # print(ds[0]['extract_number']['small_scales'])
     return ds
