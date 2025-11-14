@@ -36,6 +36,7 @@ def stratified_packs_by_nested_key(
     按嵌套字段路径(默认 extra_info.raw_id)分层；对 sizes 中每个 k：
       - 每个分层随机取 k 条（可选有放回）
       - 合并为一个新数据集
+      - 新增：对每个数据集进行 repeat 操作，重复次数为 max_size / size
     返回与 sizes 等长的“新数据集列表”，类型与输入保持一致。
     """
 
@@ -180,9 +181,17 @@ def stratified_packs_by_nested_key(
             logger.info(f"[stratified] k={k}（有放回）期望={k*len(filter_buckets)}，得到={len(pack_indices)}")
 
         packs.append(_subset(dataset, pack_indices))
+    
+    # ---- 重复数据集 ----
+    repeated_packs = []
+    for pack, size in zip(packs, sizes):
+        repeat_count = max_size // size  # 计算每个数据集的重复次数
+        # print(repeat_count,len(pack))
+        repeated_pack = list(pack) *repeat_count
+        repeated_packs.append(repeated_pack) 
 
-    return packs
-
+    # 返回重复后的数据集
+    return repeated_packs
 
 
 

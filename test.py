@@ -50,18 +50,21 @@ from logger import setup_logger
 #     print("ERROR:", ret["error"])
 
 
-code = r'''
-print(None)
+# code = r'''
+# print(None)
 
-'''
-
-logger = setup_logger()
-# code = code+r'''
-# if __name__ == "__main__":
-#     print(generator())
 # '''
-ret = sandboxfusion_run("https://nat-notebook-inspire.sii.edu.cn/ws-6e6ba362-e98e-45b2-9c5a-311998e93d65/project-4493c9f7-2fbf-459a-ad90-749a5a420b91/user-ffe43f44-3d3b-44eb-8c68-ea76d13211e5/vscode/5036c53a-7e0f-4cb7-8546-d1481ce410ef/0bb00492-4106-40c2-abf1-64a8b368ade8/proxy/8080/run_code", code,logger=logger,
-                        language='python',stdin="")
-if ret['run_result']['stdout'].startswith( 'None'):
-    print(ret)
+
+# logger = setup_logger()
+# # code = code+r'''
+# # if __name__ == "__main__":
+# #     print(generator())
+# # '''
+# ret = sandboxfusion_run("https://nat-notebook-inspire.sii.edu.cn/ws-6e6ba362-e98e-45b2-9c5a-311998e93d65/project-4493c9f7-2fbf-459a-ad90-749a5a420b91/user-ffe43f44-3d3b-44eb-8c68-ea76d13211e5/vscode/5036c53a-7e0f-4cb7-8546-d1481ce410ef/0bb00492-4106-40c2-abf1-64a8b368ade8/proxy/8080/run_code", code,logger=logger,
+#                         language='python',stdin="")
+# if ret['run_result']['stdout'].startswith( 'None'):
+#     print(ret)
+
+
+print([1,2,3]*3)
 

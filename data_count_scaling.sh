@@ -36,7 +36,7 @@ MAX_TOKENS=2048
 TRAIN_MODEL_PATH="/inspire/hdd/global_public/public_models/Qwen/Qwen2.5-7B"
 
 # Scaling args
-SIZE_LIST=(10 50 100 500 1000 2000)
+SIZE_LIST=(1 10 50 100 500 1000 2000)
 # Paths
 # 以json格式存储的代码问题
 SAVE_TEST_CASE="./Code-Contest-Plus/with_generator_test_case"
@@ -52,7 +52,7 @@ SAVE_SCALING_CODE_PROBLEM_DIR="./Code-Contest-Plus/scaling_code_problem"
 SAVE_SCALING_LOGIC_PROBLEM_DIR="./Code-Contest-Plus/scaling_logic_problem"
 SAVE_SCALING_TRAIN_PROBLEM_DIR="./Code-Contest-Plus/scaling_train_logic"
 
-SAVE_DIFF_TRAIN_PROBLEM_DIR="./Code-Contest-Plus/scaling_diff_train_logic"
+SAVE_DIFF_TRAIN_PROBLEM_DIR="./Code-Contest-Plus/new_scaling_diff_train_logic"
 
 # python from_logic_find_mutiple_code.py \
 #     --load_type "parquet" \
