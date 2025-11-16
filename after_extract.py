@@ -983,7 +983,41 @@ if __name__ == "__main__":
 
     return success_problems
 
-
+def generate_problem_detail_and_ground_truth(example,problem_scale,sandboxfusion_url,logger=None):
+    problem_detail={}
+    ground_truth = ""
+    test_case_input=""
+    code = fix_newlines_in_python_strings(import_needed_module_for_python(example['generate_testcase']))
+    problem_detail_sandbox_code = code + f'''
+if __name__ == "__main__":
+    print(generate_testcase({problem_scale}, "dict" ))
+'''
+    ret = sandboxfusion_run(sandboxfusion_url, problem_detail_sandbox_code,logger=logger,
+                                             language='python', stdin="")
+    
+    if ret["ok"]:
+        problem_detail = ret['run_result']["stdout"]
+        
+    test_case_sandbox_code = code + f'''
+if __name__ == "__main__":
+    print(generate_testcase({problem_scale}))
+'''
+    ret = sandboxfusion_run(sandboxfusion_url, test_case_sandbox_code,logger=logger,
+                                             language='python', stdin="")
+    
+    if ret["ok"]:
+        test_case_input = ret['run_result']["stdout"]
+    for solution_code,lang in zip(example['solutions']['solution'],example['solutions']['language']):
+        if lang == 2:
+            ret = sandboxfusion_run(sandboxfusion_url, solution_code, logger=logger,
+                                    language='cpp', stdin=test_case_input)
+        elif lang == 3:
+            ret = sandboxfusion_run(sandboxfusion_url, solution_code,logger=logger,
+                                    language='python', stdin=test_case_input)
+        if ret['ok']:
+            ground_truth = ret['run_result']["stdout"]
+    return problem_detail,ground_truth
+        
 if __name__ == "__main__":
     logger = setup_logger()
     examples=  load_and_prepare_dataset("/inspire/hdd/global_user/xucaijun-253108120121/Code/FORGE",load_type="json",logger=logger,split="Train",file_glob="with_generator_after_filter.jsonl")
