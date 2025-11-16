@@ -175,7 +175,7 @@ def write_and_build_referenece_solution(
             if logger and debug: logger.error("Reference solution compilation timed out.")
             return False
     elif lang == "python":
-        sol_code.write_text(fix_newlines_in_python_strings(solution_code_str), encoding="utf-8")
+        sol_code.write_text(solution_code_str, encoding="utf-8")
         return True
     else:
         if logger and debug: logger.error("Not CPP or Python code.")

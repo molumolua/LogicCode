@@ -424,7 +424,92 @@ def generator():
 {problem}
 """
 
+scale_param_extractor_prompt ='''
+You are given as input the full statement of a single algorithmic problem. Your job is to **emit one JSON code block** that extracts all numeric *scale parameters* that are relevant to the **time complexity** of typical solutions.
 
+A *scale parameter* is any integer quantity that bounds:
+- The number of items, elements, or positions (e.g. `n` = number of elements, `m` = number of edges, `q` = number of queries).
+- The size of a grid, string, or sequence (e.g. length up to `2e5`, grid up to `1000 × 1000`).
+- The size of state space or iteration space that an algorithm must explicitly handle.
+
+## Input
+- A raw problem statement in natural language. It may include:
+  - Formal constraints section (e.g. “1 ≤ n ≤ 2⋅10^5”).
+  - Definitions of variables (e.g. “The first line contains an integer n — the number of vertices.”).
+  - Multiple types of constraints interleaved in the text.
+
+## Output (emit exactly one JSON code block)
+Produce **only one** JSON object in a fenced JSON code block. The JSON must map parameter names to an object of the form:
+
+```json
+{{
+  "n": {{ "max": 100000, "min": 2 }},
+  "m": {{ "max": 200000, "min": 0 }}
+}}
+```
+## What to INCLUDE
+Include a parameter only if all of the following are true:
+- It directly bounds the size or count of something that is iterated over, e.g.: 
+  - number of elements / vertices / edges / queries (n, m, q, etc.),
+  - length of a string or array, 
+  - rows / columns of a grid.
+- The bounds appear explicitly in the statement, usually in the Input / Constraints section.
+
+## What to EXCLUDE
+- Number of test cases / groups: never include t, T, or similar when it means “number of test cases”.
+- Pure value ranges for single items that do not change the input size, e.g.:
+  - -10^9 ≤ a_i ≤ 10^9 when a_i is just the value of an element.
+  - Coordinate or weight ranges that are not used as sizes of arrays/grids.
+- Any quantity that only affects output format or precision.
+
+Now, read the provided problem statement and output the single JSON code block accordingly.
+{problem}
+'''
+
+testcase_generator_prompt = '''
+You are given as input a single *algorithmic problem statement* (like those from programming contests). Your job is to **emit one Python code block** that defines a *test-case generator* function for this problem.
+
+The generator must produce **exactly one** valid test case per call, parameterized only by the numeric scale values provided via a JSON object.
+
+## Input
+You will be given:
+
+1. A raw problem statement in natural language that fully specifies:
+   - the input format,
+   - the constraints,
+   - and the meaning of each variable.
+
+2. An example `json_obj` instance:
+   - This is only an example to clarify field names and typical ranges.
+   - Your code must work for any valid `json_obj` that matches the described schema.
+
+## Required Python output (emit exactly one Python code block)
+You must output a Python code block that defines **one single function** with the following signature:
+
+```python
+def generate_testcase(json_obj, output_format: str = "str"):
+    ...
+```
+
+### Return value
+- when output_format == "str":
+  - Return a single string that is a valid input for the problem according to the Input section, representing exactly one logical test case.
+  - If the problem statement defines a format with multiple test cases controlled by an integer T in the input,You must set T = 1.
+  - Example:"1\n5\n1 2 3 4 5"
+- when output_format == "dict":
+  - Return a Python dict that is a structured, formal description of the same test case. 
+  - If the problem statement contains multiple test cases, **do not** introduce T or any extra wrapper.
+  - Example:{{"n":5,"list":[1,2,3,4,5]}}
+
+## Constraints
+- All sizes (counts, lengths, number of operations, etc.) must be determined only from json_obj.
+- All other values (elements of arrays, weights, edges, indices, etc.) must be generated randomly within a reasonable range and **strictly smaller than 10000**, while satisfying the problem’s constraints at the same time.
+
+## Problem statement
+{problem}
+## Example json_obj
+{example_json_obj}
+'''
 answer_problem_prompt = '''
 {problem}
 Please reason step by step, and put your final answer within \\boxed{{}}.
