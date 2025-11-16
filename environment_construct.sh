@@ -19,8 +19,8 @@ GENERATOR_META_NAME="2_with_generator_after_filter.json"
 HACK_SAVE_NAME="checked_hack.jsonl"
 HACK_META_NAME="checked_hack.json"
 
-TRAIN_SAVE_NAME="FORGE_train_data.parquet"
-TRAIN_META_NAME="FORGE_train_data.json"
+TRAIN_SAVE_NAME="FORGE_train_data.json"
+TRAIN_META_NAME="FORGE_train_data_meta.json"
 # API Args
 # MODEL="gpt-5-mini-2025-08-07"
 MODEL="glm-4.6"
@@ -100,4 +100,3 @@ MAX_OUTPUT_RATE=0.3
  --sandbox_url ${SANDBOX_URL} \
  --batch_size ${BATCH_SIZE} \
  --n_processes ${N_PROCESSES} 
- 

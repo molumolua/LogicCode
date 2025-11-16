@@ -10,7 +10,7 @@ from typing import Any, Dict, List, Optional
 from api import batch_get_chat_api
 from prompt import generate_generator_prompt
 from logger import setup_logger
-from process_dataset import load_and_prepare_dataset, save_output_parquet, prepare_examples,save_output_jsonl
+from process_dataset import load_and_prepare_dataset, save_output_parquet, prepare_examples,save_output_json
 from extract import extract_last_code_block, split_with_input_section, safe_format_template
 from after_extract import verify_json,find_max_difficulty
 import copy
@@ -21,16 +21,18 @@ import numpy as np
 
 import numpy as np
 
+import numpy as np
+
 def generate_difficulty_dict(vmin, vmax):
     # 计算区间大小
-    range_size = vmax - vmin
+    range_size = vmax - vmin + 1
     
-    # 确定 difficulty 数量，至少保证 10 个 difficulty，但最多 100 个
-    num_difficulties = min(100, range_size//5)
+    # 确定 difficulty 数量，但最多 100 个
+    num_difficulties = min(30, range_size)
     difficulty_dict = {}
 
     # 对于较小范围，使用等差数列（确保没有两个相邻的 difficulty 是相同的）
-    if range_size <= 30:
+    if range_size <= 100:
         step = range_size / num_difficulties
         for difficulty in range(num_difficulties):
             v = int(vmin + step * difficulty)
@@ -38,36 +40,30 @@ def generate_difficulty_dict(vmin, vmax):
                 v += 1 
             difficulty_dict[difficulty] = v
 
-    # 对于较大的范围，使用对数级别的增长，先慢后快
-    elif range_size <= 100:
-        step = range_size / num_difficulties
-        for difficulty in range(num_difficulties):
-            v = int(vmin + step * difficulty)
-            # 确保不同的 difficulty 值之间有差异
-            while difficulty > 0 and difficulty_dict[difficulty - 1] == v:
-                v += 1
-            difficulty_dict[difficulty] = v
-
     elif range_size <= 1000:
-        # 使用反向对数增长方式，先慢后快
-        step = range_size / np.log10(range_size)
+        base = 1.3 
         for difficulty in range(num_difficulties):
-            v = int(vmin + step * np.log10(num_difficulties - difficulty))  # 使用反向对数
-            # 确保不同的 difficulty 值之间有差异
-            while difficulty > 0 and difficulty_dict[difficulty - 1] == v:
-                v += 1
+            if difficulty > 0:
+                v = round(vmin + (base ** difficulty))  # 采用指数增长
+            else:
+                v = vmin
+            if v>=vmax:
+                difficulty_dict[difficulty] = vmax
+                break
             difficulty_dict[difficulty] = v
-    
     else:
-        # 使用更强的反向对数增长方式
+        base = 1.6  # 这里我们选择基数为 10 来实现更快的增长
         for difficulty in range(num_difficulties):
-            v = int(vmin + (range_size) * np.log10(num_difficulties - difficulty) / np.log10(num_difficulties))
-            # 确保不同的 difficulty 值之间有差异
-            while difficulty > 0 and difficulty_dict[difficulty - 1] == v:
-                v += 1
+            if difficulty > 0:
+                v = round(vmin + (base ** difficulty))  # 采用指数增长
+            else:
+                v = vmin
+            if v>=vmax:
+                difficulty_dict[difficulty] = vmax
+                break
             difficulty_dict[difficulty] = v
-    
     return difficulty_dict
+
 
 
 def main():
@@ -145,12 +141,28 @@ def main():
             vmin = v["min"]
             vmax = v["max"]
             
-        if vmin == -1 or vmax == -1:
+        if vmin == -1 or vmax == -1 or vmax==vmin:
             continue
         examples_processed.append({
             **example,
-            "difficulty_dict":generate_difficulty_dict(vmin,vmax)
+            "difficulty_dict":generate_difficulty_dict(vmin=vmin,vmax=vmax)
         })
-    save_output_jsonl(examples_processed, save_dir_path=save_dir_path,  logger=logger, save_name=args.save_name, meta_name=args.save_meta_name)
+    
+    json_train_configs={}
+    for example in examples_processed:
+        example['params']=json.loads(example['parsed_json'])
+        example['params']['difficulty']={
+            "version": 1,
+            "params": {
+                "dmax": len(example['difficulty_dict'])-1,
+                "ema_beta":0.0,
+                "activate_function":"base"
+            }
+        }
+        example.pop("parsed_json")
+        example.pop("answer")
+        json_train_configs[example['name']]=example
+        
+    save_output_json(json_train_configs, save_dir_path=save_dir_path,  logger=logger, save_name=args.save_name, meta_name=args.save_meta_name)
 if __name__ == "__main__":
     main()
