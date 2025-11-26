@@ -10,7 +10,7 @@ LOAD_TYPE="parquet"
 FILE_GLOB="train-*.parquet"
 GENERATOR_FILE_GLOB="*_after_filter.jsonl"
 # Save Args
-SAVE_DIR="/inspire/hdd/global_user/xucaijun-253108120121/Code/FORGE"
+SAVE_DIR="/inspire/hdd/global_user/xucaijun-253108120121/Code/FORGE_SECOND"
 FILTER_PROBLEM_SAVE_NAME="after_filter.jsonl"
 FILTER_PROBLEM_META_NAME="after_filter.json"
 GENERATOR_SAVE_NAME="2_with_generator_after_filter.jsonl"
@@ -21,6 +21,11 @@ HACK_META_NAME="checked_hack.json"
 
 TRAIN_SAVE_NAME="FORGE_train_data.json"
 TRAIN_META_NAME="FORGE_train_data_meta.json"
+
+INSTRUCTION_SAVE_NAME="FORGE_instruction_data.json"
+INSTRUCTION_META_NAME="FORGE_instruction_data_meta.json"
+
+
 # API Args
 # MODEL="gpt-5-mini-2025-08-07"
 MODEL="glm-4.6"
@@ -41,16 +46,16 @@ BATCH_SIZE=512
 DIFFERENT_OUTPUT_LIMIT=10
 MAX_OUTPUT_RATE=0.3
 
-# python api_filter_problem_for_environment.py \
-#  --load_type ${LOAD_TYPE} \
-#  --load_dir ${LOAD_DIR} \
-#  --file_glob ${FILE_GLOB} \
-#  --max_rows ${MAX_ROWS} \
-#  --save_dir ${SAVE_DIR} \
-#  --save_name ${FILTER_PROBLEM_SAVE_NAME} \
-#  --save_meta_name ${FILTER_PROBLEM_META_NAME} \
-#  --model ${MODEL}\
-#  --batch_szie ${BATCH_SIZE}
+python api_filter_problem_for_environment.py \
+ --load_type ${LOAD_TYPE} \
+ --load_dir ${LOAD_DIR} \
+ --file_glob ${FILE_GLOB} \
+ --max_rows ${MAX_ROWS} \
+ --save_dir ${SAVE_DIR} \
+ --save_name ${FILTER_PROBLEM_SAVE_NAME} \
+ --save_meta_name ${FILTER_PROBLEM_META_NAME} \
+ --model ${MODEL}\
+ --batch_szie ${BATCH_SIZE}
 
 
 # python api_generate_generator_for_environment.py \
@@ -87,16 +92,24 @@ MAX_OUTPUT_RATE=0.3
 #  --n_processes ${N_PROCESSES}
 
 
- python set_max_difficulty_and_process_train_data.py \
- --load_type json \
+#  python set_max_difficulty_and_process_train_data.py \
+#  --load_type json \
+#  --load_dir ${SAVE_DIR} \
+#  --file_glob ${HACK_SAVE_NAME} \
+#  --max_rows ${MAX_ROWS} \
+#  --save_dir ${SAVE_DIR} \
+#  --save_name ${TRAIN_SAVE_NAME} \
+#  --save_meta_name ${TRAIN_META_NAME} \
+#  --model ${MODEL}\
+#  --max_prompt_length ${MAX_PROMPT_LENGTH} \
+#  --sandbox_url ${SANDBOX_URL} \
+#  --batch_size ${BATCH_SIZE} \
+#  --n_processes ${N_PROCESSES} 
+
+
+  python filter_train_configs.py \
  --load_dir ${SAVE_DIR} \
- --file_glob ${HACK_SAVE_NAME} \
- --max_rows ${MAX_ROWS} \
+ --load_name ${TRAIN_SAVE_NAME} \
  --save_dir ${SAVE_DIR} \
- --save_name ${TRAIN_SAVE_NAME} \
- --save_meta_name ${TRAIN_META_NAME} \
- --model ${MODEL}\
- --max_prompt_length ${MAX_PROMPT_LENGTH} \
- --sandbox_url ${SANDBOX_URL} \
- --batch_size ${BATCH_SIZE} \
- --n_processes ${N_PROCESSES} 
+ --save_name ${INSTRUCTION_SAVE_NAME} \
+ --save_meta_name ${INSTRUCTION_META_NAME}

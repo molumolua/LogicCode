@@ -103,13 +103,13 @@ SAVE_TRAIN_PROBLEM_DIR="./Code-Contest-Plus/train_logic_filter"
 #     --n_processes ${N_PROCESSES} \
 #     --check_number  ${CHECK_NUMBER_FOR_VERIFY_PROBLEMS}
 
-python process_train_data.py \
-    --max_rows -1 \
-    --max_tokens ${MAX_TOKENS} \
-    --train_model_path ${TRAIN_MODEL_PATH} \
-    --load_type "parquet" \
-    --load_dir ${SAVE_VERIFY_PROBLEM_DIR} \
-    --save_dir ${SAVE_TRAIN_PROBLEM_DIR} \
-    --file_glob ${PARQUET_FILE_NAME} \
-    --save_name ${PARQUET_FILE_NAME} \
-    --save_meta_name ${META_NAME}
+# python process_train_data.py \
+#     --max_rows -1 \
+#     --max_tokens ${MAX_TOKENS} \
+#     --train_model_path ${TRAIN_MODEL_PATH} \
+#     --load_type "parquet" \
+#     --load_dir ${SAVE_VERIFY_PROBLEM_DIR} \
+#     --save_dir ${SAVE_TRAIN_PROBLEM_DIR} \
+#     --file_glob ${PARQUET_FILE_NAME} \
+#     --save_name ${PARQUET_FILE_NAME} \
+#     --save_meta_name ${META_NAME}

@@ -468,7 +468,7 @@ def sandboxfusion_run(base_url: str,
                       stdin: str = "",
                       args=None,
                       time_limit: int = 10,
-                      memory_limit_mb: int = 256,
+                      memory_limit_mb: int = 4096,
                       logger=None) -> dict:
     """
     调用 SandboxFusion 执行代码（不抛异常）。

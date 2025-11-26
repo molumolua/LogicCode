@@ -37,7 +37,6 @@ def pre_fun(example):
 
 def post_fun(example, reply):
     example["answer"] = reply
-# ---------- main ----------
 def pre_filter(examples,filter_languages = [2,3],filter_languages_cnt = 3,keep_len = 10):
     ds_processed = []
     print(examples[0]["description"])

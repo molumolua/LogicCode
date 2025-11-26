@@ -15,7 +15,7 @@ def get_problems(example,input_difficultys,sandboxfusion_url,logger=None):
         problem_scale_dict = {
             k:problem_scale for k in example['params'].keys() if k !='difficulty'
         }
-        problem_detail,ground_truth = generate_problem_detail_and_ground_truth(example,problem_scale_dict,sandboxfusion_url,logger=logger)
+        problem_detail,ground_truth = generate_problem_detail_and_ground_truth(example,problem_scale_dict,sandboxfusion_url,logger=logger,max_try=3)
         content = template.format(problem_name=example['name'],description = example['logic_description'],problem_detail=problem_detail)
         contents.append((content,f"\\boxed{{{ground_truth}}}"))
         
@@ -104,5 +104,5 @@ if __name__ == "__main__":
         }
     }}
     print(get_problems(example["199_C. About Bacteria"],input_difficultys=[0],
-                       sandboxfusion_url="https://nat-notebook-inspire.sii.edu.cn/ws-6e6ba362-e98e-45b2-9c5a-311998e93d65/project-a75d443b-88d5-4461-859f-548caa0b38a7/user-ffe43f44-3d3b-44eb-8c68-ea76d13211e5/vscode/343f415d-2080-49db-8901-0d11ad76754c/da4db590-2d65-4162-9d58-7ddf81e88f36/proxy/8080/run_code",
+                       sandboxfusion_url="http://localhost:8080/run_code",
                        logger=logger))
