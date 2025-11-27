@@ -12,15 +12,15 @@ from prompt import testcase_generator_prompt
 from logger import setup_logger
 from process_dataset import load_and_prepare_dataset, save_output_jsonl, prepare_examples
 from extract import extract_last_code_block, split_with_input_section, safe_format_template
-from after_extract import verify_and_exec_generator_for_environment,random_get_json_object
-from api_filter_problem_for_environment import filter_only_one_scale_problem
+from after_extract import verify_and_exec_generator_for_environment_combined,new_random_get_json_object
+from api_filter_problem_for_environment import filter_output_problems,append_instruction
 import copy,random
 
 
 # ---------- main ----------
 
 def pre_fun(example):
-    example_json_obj = random_get_json_object(example['parsed_json'])
+    example_json_obj = new_random_get_json_object(example['parsed_json'])
 
         
     return testcase_generator_prompt.format(problem=example['raw_description'],example_json_obj=example_json_obj)
@@ -43,7 +43,7 @@ def main():
     parser.add_argument("--save_name", type=str, default="output_problems.jsonl")
     parser.add_argument("--save_meta_name", type=str, default="output_problems_meta.json")
     
-    # 推理与并行
+     # 推理与并行
     parser.add_argument("--model", type=str, default="gpt-5", help="Model name for batch_get_chat_api")
     parser.add_argument("--n_processes", type=int, default=16, help="Parallel processes for API calls")
     parser.add_argument("--temperature", type=float, default=1, help="Sampling temperature")
@@ -51,16 +51,33 @@ def main():
     parser.add_argument("--think", action="store_true", default=False, help="Enable think mode for API (if supported)")
     parser.add_argument("--extract_code", action="store_true", default=False, help="Whether to extract code from dataset")
     
-    parser.add_argument("--filter_numerical", action="store_true", default=False, help="Whether only need numerical problems")
+    # 过滤与生成设置
     parser.add_argument("--check_number", type=int, default=3, help="The number of submissions for check output.")
-    parser.add_argument("--test_times", type=int, default=100, help="The maximum number allowed in the generator.")
-    parser.add_argument("--sandbox_url",type=str,default=None,help="The sandboxfusion url for code execution.")
-    parser.add_argument("--error_cnt_limit",type=int,default=1,help="The error count limit to stop trying.")
+    parser.add_argument("--sandbox_url", type=str, default=None, help="The sandboxfusion url for code execution.")
+    
+    # 环境验证相关参数（verify_and_exec_generator_for_environment_combined 会用到）
+    parser.add_argument("--deep_test_times", type=int, default=50,
+                        help="Number of deep tests (same seed, multiple runs) for each generator.")
+    parser.add_argument("--breadth_test_times", type=int, default=10,
+                        help="Number of breadth tests (different seeds / inputs) for each generator.")
+    parser.add_argument("--different_output_limit", type=int, default=50,
+                        help="Maximum allowed different outputs before treating generator as unstable.")
+    parser.add_argument("--max_output_rate", type=float, default=0.6,
+                        help="Maximum ratio of distinct outputs / total runs; larger means generator is too unstable.")
+    
     # 批次与重试
     parser.add_argument("--batch_size", type=int, default=256, help="Batch size per attempt")
     parser.add_argument("--max_attempts", type=int, default=3, help="Outer retry attempts over remaining problems")
     parser.add_argument("--inner_max_try", type=int, default=3, help="Inner retry count passed to batch_get_chat_api")
-
+    
+    # 输出类型过滤
+    parser.add_argument(
+        "--allowed_output_types",
+        type=str,
+        nargs="+",
+        default=["array", "string"],
+        help="Allowed output types for problems, e.g. array number string"
+    )
     args = parser.parse_args()
 
     logger = setup_logger()
@@ -90,7 +107,9 @@ def main():
         logger.info("No examples with usable code. Exit.")
         return
 
-    examples = filter_only_one_scale_problem(examples)
+    examples = filter_output_problems(examples,allowed_output_types=args.allowed_output_types)
+    examples = append_instruction(examples)
+    
     output_problems: List[Dict[str, Any]] = []
     left_problems = examples[args.start_problem_idx:]       # list
     next_attempt_problems: List[Dict[str, Any]] = []
@@ -126,14 +145,15 @@ def main():
                 max_try=args.inner_max_try,
                 think=args.think,
             )
-            success_problems, todo_problems = verify_and_exec_generator_for_environment(batch_problems, 
+            success_problems, todo_problems = verify_and_exec_generator_for_environment_combined(batch_problems, 
                                                                        logger,
                                                                        debug=True,
                                                                        check_number=args.check_number,
-                                                                       filter_numerical=args.filter_numerical,
-                                                                       test_times=args.test_times,
+                                                                       deep_test_times=args.deep_test_times,
+                                                                       breadth_test_times=args.breadth_test_times,
                                                                        sandboxfusion_url=args.sandbox_url,
-                                                                       error_cnt_limit=args.error_cnt_limit)
+                                                                       different_output_limit=args.different_output_limit,
+                                                                       max_output_rate=args.max_output_rate)
 
             output_problems.extend(success_problems)
 

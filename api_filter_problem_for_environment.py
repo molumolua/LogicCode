@@ -12,9 +12,9 @@ from prompt import generate_generator_prompt
 from logger import setup_logger
 from process_dataset import load_and_prepare_dataset, save_output_parquet, prepare_examples,save_output_jsonl
 from extract import extract_last_code_block, split_with_input_section, safe_format_template
-from after_extract import verify_json
+from after_extract import verify_meta_json
 import copy
-from prompt import scale_param_extractor_prompt
+from prompt import scale_param_extractor_prompt,problem_meta_extractor_prompt
 
 from datasets import load_from_disk
 def cut_desc_at_input(desc: str) -> str:
@@ -33,7 +33,7 @@ def preprocess_example(example):
     return description
 
 def pre_fun(example):
-    return scale_param_extractor_prompt.format(problem=example['raw_description'])
+    return problem_meta_extractor_prompt.format(problem=example['raw_description'])
 
 def post_fun(example, reply):
     example["answer"] = reply
@@ -111,8 +111,9 @@ def scale_param_extract(examples,logger,save_dir_path,args):
                 max_try=args.inner_max_try,
                 think=args.think,
             )
-
-            success_problems, todo_problems = verify_json(batch_problems, logger=logger,debug=True)
+            # success_problems=batch_problems
+            # todo_problems=[]
+            success_problems, todo_problems = verify_meta_json(batch_problems, logger=logger,debug=True)
 
             output_problems.extend(success_problems)
 
@@ -127,13 +128,43 @@ def scale_param_extract(examples,logger,save_dir_path,args):
 
     logger.info(f"Done. total_completed={len(output_problems)} | total_input={len(examples)}")
 
-def filter_only_one_scale_problem(examples):
+# def filter_only_one_scale_problem(examples):
+#     output_examples = []
+#     for example in examples:
+#         obj = json.loads(example['parsed_json'])
+#         if len(obj) == 1:
+#             output_examples.append(example)
+    
+#     return output_examples
+
+
+def filter_output_problems(examples,allowed_output_types):
     output_examples = []
     for example in examples:
         obj = json.loads(example['parsed_json'])
-        if len(obj) == 1:
+        if obj['output_type'] in allowed_output_types and obj['is_output_unique'] and len(obj['scale_params'])>0:
             output_examples.append(example)
-    
+            
+            
+    return output_examples
+import re
+def append_instruction(examples):
+    output_examples = []
+    for example in examples:
+        text = example['raw_description']
+        match1 = re.search(r'Output\n(.*?)\nExamples', text, re.DOTALL)
+        match2 = re.search(r'Output\n(.*?)\nExample', text, re.DOTALL)
+        output_content=""
+        if match1:
+            output_content = match1.group(1).strip()  # 去除多余的空白字符
+        elif match2:
+            output_content = match2.group(1).strip()  # 去除多余的空白字符
+        
+        output_examples.append({
+            **example,
+            "instruction":output_content
+        })
+
     return output_examples
 
 def main():

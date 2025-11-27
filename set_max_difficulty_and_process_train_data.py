@@ -12,21 +12,16 @@ from prompt import generate_generator_prompt
 from logger import setup_logger
 from process_dataset import load_and_prepare_dataset, save_output_parquet, prepare_examples,save_output_json
 from extract import extract_last_code_block, split_with_input_section, safe_format_template
-from after_extract import verify_json,find_max_difficulty
+from after_extract import find_max_difficulty
 import copy
 from prompt import scale_param_extractor_prompt
 
 
 import numpy as np
 
-import numpy as np
-
-import numpy as np
-
 def generate_difficulty_dict(vmin, vmax):
     # 计算区间大小
     range_size = vmax - vmin + 1
-    
     # 确定 difficulty 数量，但最多 100 个
     num_difficulties = min(30, range_size)
     difficulty_dict = {}
@@ -132,24 +127,14 @@ def main():
     examples=find_max_difficulty(examples,logger,debug=True,sandboxfusion_url=args.sandbox_url,max_prompt_length=args.max_prompt_length)
     examples_processed = []
     for example in examples:
-        print(example)
-        vmin = -1
-        vmax = -1
-        example['parsed_json'] = example['parsed_json'].replace("'", '"')
-        json_obj = json.loads(example['parsed_json'])   
-        for k,v in json_obj.items():
-            vmin = v["min"]
-            vmax = v["max"]
-            
-        if vmin == -1 or vmax == -1 or vmax==vmin:
-            continue
         examples_processed.append({
             **example,
-            "difficulty_dict":generate_difficulty_dict(vmin=vmin,vmax=vmax)
+            "difficulty_dict":generate_difficulty_dict(0,example['scale_range'])
         })
     
     json_train_configs={}
     for example in examples_processed:
+        example['parsed_json'] = example['parsed_json'].replace("'", '"')
         example['params']=json.loads(example['parsed_json'])
         example['params']['difficulty']={
             "version": 1,
